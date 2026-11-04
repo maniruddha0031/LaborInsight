@@ -1,0 +1,19 @@
+[
+ "util.js",
+ "csv-stream.js",
+ "schemas.js",
+ "rules.js",
+ "ingest.js",
+ "model.js",
+ "analysis/adherence.js",
+ "analysis/overtime.js",
+ "analysis/integrity.js",
+ "analysis/compliance.js",
+ "analysis/sales.js",
+ "analysis/behavior.js",
+ "quality.js",
+ "insights.js",
+ "present.js",
+ "scope.js",
+ "pipeline.js"
+]

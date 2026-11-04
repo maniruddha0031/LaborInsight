@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Labor Cost Intelligence</title>
+<meta name="description" content="Find, explain and quantify labor cost leakage from schedule, punch, edit and sales exports.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232F5D7C'/%3E%3Cpath d='M8 22V10m8 12V14m8 8v-6' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <div class="k">Labor cost</div>
+      <div class="t">Labor Cost Intelligence &amp; Optimization</div>
+    </div>
+    <nav id="nav" role="tablist" aria-orientation="vertical">
+      <button role="tab" data-view="dataset" aria-selected="true">Dataset</button>
+      <div class="ng">Analysis</div>
+      <button role="tab" data-view="overview" disabled>Executive overview</button>
+      <button role="tab" data-view="findings" disabled>Findings <span class="n" id="navFindings"></span></button>
+      <button role="tab" data-view="actions" disabled>Action plan</button>
+      <button role="tab" data-view="laborrank" disabled>Labor % ranking</button>
+      <button role="tab" data-view="behavior" disabled>Employee behavior</button>
+      <div class="ng">Explore</div>
+      <button role="tab" data-view="manual" disabled>Manual punches</button>
+      <button role="tab" data-view="adherence" disabled>Schedule vs actual</button>
+      <button role="tab" data-view="overtime" disabled>Overtime</button>
+      <button role="tab" data-view="integrity" disabled>Punch integrity</button>
+      <button role="tab" data-view="compliance" disabled>Breaks &amp; compliance</button>
+      <button role="tab" data-view="sales" disabled>Sales &amp; labor</button>
+      <button role="tab" data-view="stores" disabled>Stores</button>
+      <button role="tab" data-view="employees" disabled>Employees</button>
+      <button role="tab" data-view="trends" disabled>Monthly trends</button>
+      <div class="ng">Reference</div>
+      <button role="tab" data-view="quality" disabled>Data quality</button>
+      <button role="tab" data-view="method" disabled>Method &amp; rules</button>
+    </nav>
+    <div class="datab">
+      <div class="dh">Data</div>
+      <div class="src" id="srcName">No dataset loaded</div>
+      <div class="src2" id="srcMeta"></div>
+      <button class="lnk" id="changeData" hidden>Change dataset</button>
+      <button class="lnk themebtn" id="themeBtn" type="button">Switch to dark</button>
+    </div>
+  </aside>
+  <main id="main">
+    <div class="fbar" id="fbar" hidden>
+      <div class="fgroup">
+        <span class="flabel">View</span>
+        <div class="seg" role="group" aria-label="Organization or store view">
+          <button type="button" id="fOrg" aria-pressed="true" title="All stores in the dataset">Organization</button>
+          <button type="button" id="fStoreBtn" aria-pressed="false" title="Pick one store, or several to compare">Store ▾</button>
+        </div>
+        <div class="pop" id="storePop" hidden>
+          <input type="search" id="storeQ" placeholder="Search store number" aria-label="Search stores">
+          <div class="poprow"><button class="lnk" id="storeAll" type="button">Select shown</button><button class="lnk" id="storeNone" type="button">Clear</button><span class="note" id="storeCount"></span></div>
+          <div class="storelist" id="storeList"></div>
+          <div class="poprow"><button class="btn" id="storeCancel" type="button">Cancel</button><button class="btn primary" id="storeApply" type="button">Show selected</button></div>
+        </div>
+      </div>
+      <div class="fgroup">
+        <span class="flabel">Period</span>
+        <select id="fPreset" aria-label="Analysis period"></select>
+        <span class="fdates"><input type="date" id="fFrom" aria-label="From date"><span class="note">to</span><input type="date" id="fTo" aria-label="To date"><button class="btn" id="fApply" type="button" hidden>Apply dates</button></span>
+      </div>
+      <button class="lnk" id="fReset" type="button">Reset filters</button>
+      <div class="factive" id="fActive" aria-live="polite"></div>
+    </div>
+    <div class="busybar" id="busy" hidden><span class="spin" aria-hidden="true"></span><span id="busyMsg">Recalculating…</span></div>
+    <section class="view landing" id="v-dataset">
+      <h1>Labor Cost Intelligence &amp; Optimization</h1>
+      <p class="lead">Find where labor money leaks, why, and what to change. Choose a dataset or upload a ZIP of schedule, punch, punch-edit and sales exports. Everything is processed in this browser; nothing is uploaded anywhere.</p>
+      <div class="hero">
+        <div class="panel dsform">
+          <h3 style="margin:0">1 · Choose data</h3>
+          <label for="dsSelect" class="note">Registered datasets (datasets/manifest.json)</label>
+          <div class="row">
+            <select id="dsSelect" aria-label="Registered datasets"><option value="">Loading datasets…</option></select>
+          </div>
+          <div class="or">or</div>
+          <label class="drop" id="drop" tabindex="0">
+            <input type="file" id="fileInput" accept=".zip,application/zip" hidden>
+            <b>Upload a ZIP dataset</b>
+            <span class="note">Drop a .zip here or click to browse. CSV exports inside, any folder layout.</span>
+          </label>
+          <div class="row">
+            <button class="btn primary" id="openSnapBtn" hidden>Open analysis</button>
+            <button class="btn primary" id="analyzeBtn" disabled>Analyze</button>
+            <button class="btn" id="cancelBtn" hidden>Cancel</button>
+            <span class="note" id="dsHint"></span>
+          </div>
+          <div id="dsMsg" role="status" aria-live="polite"></div>
+        </div>
+        <div class="panel">
+          <h3>2 · Selected dataset</h3>
+          <dl class="dsinfo" id="dsInfo"><dt>Dataset</dt><dd>—</dd></dl>
+          <div class="progress" id="progress" hidden>
+            <div class="bar"><div id="progBar"></div></div>
+            <div class="pm" id="progMsg"></div>
+            <ul class="steps" id="steps"></ul>
+          </div>
+          <div id="valSummary" style="margin-top:12px"></div>
+        </div>
+      </div>
+      <div class="howto">
+        <div class="panel"><b>What the ZIP should contain</b>Schedule, punches with pay, punch audit / change-approval reports, breaks, labor exceptions and monthly forecast vs actual sales — as CSV. Files are recognised by their columns, not their names.</div>
+        <div class="panel"><b>How employees are matched</b>GEID is the only employee key across every file. Names are for display; records without a GEID are reported, never guessed.</div>
+        <div class="panel"><b>What you get</b>Leakage findings with evidence, severity and confidence; $ impact at actual pay rates where the data supports it; drill-downs by store, GEID and month.</div>
+      </div>
+    </section>
+    <section class="view" id="v-overview" hidden></section>
+    <section class="view" id="v-findings" hidden></section>
+    <section class="view" id="v-actions" hidden></section>
+    <section class="view" id="v-laborrank" hidden></section>
+    <section class="view" id="v-manual" hidden></section>
+    <section class="view" id="v-behavior" hidden></section>
+    <section class="view" id="v-adherence" hidden></section>
+    <section class="view" id="v-overtime" hidden></section>
+    <section class="view" id="v-integrity" hidden></section>
+    <section class="view" id="v-compliance" hidden></section>
+    <section class="view" id="v-sales" hidden></section>
+    <section class="view" id="v-stores" hidden></section>
+    <section class="view" id="v-employees" hidden></section>
+    <section class="view" id="v-trends" hidden></section>
+    <section class="view" id="v-quality" hidden></section>
+    <section class="view" id="v-method" hidden></section>
+  </main>
+</div>
+<script src="lib/chart.umd.min.js"></script>
+<script src="datasets/manifest.js"></script>
+<script src="js/ui/format.js"></script>
+<script src="js/ui/components.js"></script>
+<script src="js/ui/views-analysis.js"></script>
+<script src="js/ui/views-explore.js"></script>
+<script src="js/ui/views-reference.js"></script>
+<script src="js/ui/views-new.js"></script>
+<script src="js/ui/views-behavior.js"></script>
+<script src="js/ui/app.js"></script>
+</body>
+</html>

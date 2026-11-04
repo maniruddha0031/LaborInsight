@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "default": "cmg-mar-oct-2026",
+  "datasets": [
+    {
+      "id": "cmg-mar-oct-2026",
+      "label": "CMG — March to October 2026",
+      "description": "Schedule, punches with pay, punch audit, punch change approvals, breaks, break audit, labor exceptions, premium/misc pay and monthly forecast vs actual sales (17 CSV files).",
+      "period": "2026-03-02 to 2026-10-31",
+      "files": [
+        "cmg-mar-oct-2026.zip"
+      ],
+      "fileSizes": [
+        88703887
+      ],
+      "sizeBytes": 88703887,
+      "excludeStores": [
+        "77777"
+      ],
+      "rules": {},
+      "snapshot": {
+        "dir": "cmg-mar-oct-2026.snapshot",
+        "empShards": 64,
+        "modelParts": 4,
+        "generatedAt": "2026-11-04T17:22:46.179Z",
+        "engine": "fa605b1039af"
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+# Dataset ZIPs in datasets/ are intentionally tracked (the portal needs them after cloning).
+# Do NOT add datasets/*.zip here.
+
+# Raw, unzipped exports must never be committed — package them with tools/build-dataset-zip.js
+datasets/**/*.csv
+
+# Local test / analysis output
+ui-test-output/
+result.json
+validation-report.json
+*.log
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+node_modules/
