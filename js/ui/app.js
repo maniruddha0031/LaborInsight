@@ -18,7 +18,12 @@
   function applyTheme(t) {
     if (t) document.documentElement.setAttribute('data-theme', t); else document.documentElement.removeAttribute('data-theme');
     const dark = t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-    $('#themeBtn').textContent = dark ? 'Switch to light' : 'Switch to dark';
+    // The button offers the other theme: a sun to go light, a moon to go dark.
+    const btn = $('#themeBtn'), next = dark ? 'light' : 'dark';
+    btn.querySelector('.ti').textContent = dark ? '☀' : '☾';
+    btn.querySelector('.tl').textContent = dark ? 'Light' : 'Dark';
+    btn.setAttribute('aria-label', `Switch to ${next} theme`);
+    btn.title = `Switch to ${next} theme`;
   }
   applyTheme(getTheme());
   $('#themeBtn').addEventListener('click', () => {
