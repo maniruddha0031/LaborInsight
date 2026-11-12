@@ -7,6 +7,7 @@
  * in : {cmd:'analyze', source:{kind:'urls', urls:[…], sizes:[…]} | {kind:'file', file}, cfg}
  *      {cmd:'loadModel', chunks:[base64…], cfg, baseRules}   portable model from a snapshot
  *      {cmd:'filter', filter:{stores, from, to}}               re-run the analysis for a scope
+ *      {cmd:'prepareBase', rid, select}                          build the full-scope context (snapshot mode) and optionally use it
  *      {cmd:'useBase'}                                         drill-downs answer from the full analysis again
  *      {cmd:'query', qid, q}
  * out: {type:'progress', pct, msg, stage} · {type:'result', result} · {type:'filtered', result, fid}
@@ -121,6 +122,13 @@ self.onmessage = async (e) => {
     }
   } else if (m.cmd === 'useBase') {
     ctx = baseCtx;
+  } else if (m.cmd === 'prepareBase') {
+    // Full-scope analysis context for finding drill-downs when the page opened from a pre-computed snapshot.
+    try {
+      if (!baseCtx) { if (!base) throw new Error('No data model loaded.'); baseCtx = LCI.pipeline.analyseFiltered(base.M0, base.cfg, {}, base.rules).ctx; }
+      if (m.select) ctx = baseCtx;
+      post({ type: 'baseReady', rid: m.rid });
+    } catch (err) { post({ type: 'error', message: 'Could not prepare drill-down data: ' + err.message, rid: m.rid }); }
   } else if (m.cmd === 'query') {
     try {
       post({ type: 'query', qid: m.qid, data: ctx ? LCI.present.query(ctx, m.q) : null });

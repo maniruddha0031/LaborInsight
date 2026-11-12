@@ -52,7 +52,7 @@
   LCI.present = {
     result(ctx) {
       const { M, R, ADH, OT, INT, CMP, SAL, F, stores, employees, TR, quality, insights, cfg } = ctx;
-      for (const i of insights) i.plan = PLAN[i.id] || { group: 'Process & review', owner: 'Operations', horizon: '—' };
+      for (const i of insights) { i.plan = PLAN[i.id] || { group: 'Process & review', owner: 'Operations', horizon: '—' }; i.lens = LCI.focus ? LCI.focus.lensFor(i.id) : null; }
       const actions = insights.filter((i) => i.action).map((i) => ({ id: i.id, title: i.title, action: i.action, severity: i.severity, confidence: i.confidence, kind: i.kind,
         impact: i.impact, plan: i.plan }));
       return {
@@ -145,6 +145,7 @@
     query(ctx, q) {
       const { M, ADH, OT, INT, SAL, stores, employees, R } = ctx;
       const X = LCI.present.index(ctx);
+      if (q.type === 'focus') return LCI.focus.query(ctx, q);
       if (q.type === 'employee') {
         const g = q.g;
         const emp = X.empByG.get(g);
@@ -168,12 +169,13 @@
           const a = ADH.byStoreMonth[s + '|' + mm.key] || {}, o = OT.byStoreMonth[s + '|' + mm.key] || {};
           const sl = SAL.available ? SAL.table.find((x) => x.s === s && x.month === mm.key) : null;
           return { month: mm.key, label: mm.label, act: a.act || 0, sch: a.sch || 0, overPlan: a.overPlan || 0, cOverPlan: a.cOverPlan || 0, early: a.early || 0, late: a.late || 0, unsch: a.unsch || 0, mealSkip: a.mealSkip || 0,
-            avoid: (a.cAvoid || 0) + (o.premDrift || 0), otPrem: o.prem || 0, sales: sl ? sl.as : NaN, fcst: sl ? sl.fs : NaN, splh: sl ? sl.splh : NaN, laborPct: sl ? sl.laborPct : NaN };
+            avoid: (a.cAvoid || 0) + (o.premDrift || 0), otPrem: o.prem || 0, labor: a.cAct || 0, cEarly: a.cEarly || 0, cLate: a.cLate || 0, cUnsch: a.cUnsch || 0, cMeal: a.cMealSkip || 0, sales: sl ? sl.as : NaN, fcst: sl ? sl.fs : NaN, splh: sl ? sl.splh : NaN, laborPct: sl ? sl.laborPct : NaN };
         });
-        const dow = [0, 1, 2, 3, 4, 5, 6].map((d) => ({ dow: U.DOW[d], act: 0, sch: 0, early: 0, late: 0, unsch: 0 }));
+        const dow = [0, 1, 2, 3, 4, 5, 6].map((d) => ({ dow: U.DOW[d], act: 0, sch: 0, early: 0, late: 0, unsch: 0, cEarly: 0, cLate: 0, cUnsch: 0, cMeal: 0, cAct: 0 }));
         const shift = {};
         for (const d of X.daysByS.get(s) || []) {
           const w = dow[d.dow]; w.act += d.act; w.sch += d.sch; w.early += d.early; w.late += d.late; w.unsch += d.unsch;
+          w.cEarly += d.cEarly || 0; w.cLate += d.cLate || 0; w.cUnsch += d.cUnsch || 0; w.cMeal += d.cMealSkip || 0; w.cAct += d.cAct || 0;
           const t = (shift[d.shiftType] = shift[d.shiftType] || { act: 0, early: 0, late: 0 }); t.act += d.act; t.early += d.early; t.late += d.late;
         }
         const emps = (X.empsByS.get(s) || []).slice().sort((a, b) => b.avoid - a.avoid).slice(0, 60);

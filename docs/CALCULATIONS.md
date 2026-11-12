@@ -228,6 +228,44 @@ This is checked by `tools/test-behavior.js`: parts = total, Σ stores = Σ emplo
 
 An employee's "additional cost" uses the same non-overlapping parts; their "main cost driver" is the largest part.
 
+## 7g. Finding drill-downs — `focus.js`
+
+Each finding maps to one **lens**: the records that make up its figure. In the UI, drill-down figures are always summed from these records at each employee's own pay rate.
+
+| Lens | Findings | Records and $ |
+|---|---|---|
+| Paid above schedule | over-plan, persistent stores, store trend | scheduled employee-days paid above schedule. The store figure is **netted per store-day** (days under schedule offset days over), as on the finding. Employee rows are before netting, so they can add up to more than the store. |
+| Unscheduled shifts | unscheduled | paid days with no schedule, full cost |
+| Late clock-outs / early clock-ins | late-out, early-in, behaviour late / early | minutes beyond the scheduled end or before the scheduled start, at the employee's rate |
+| Skipped meals | meal-skip | planned meals not taken |
+| Overtime | overtime, behaviour overtime | OT premium per employee-week |
+| Manual punches | manual, behaviour manual, biometric | days with manual punches; $ = early, late or unscheduled time recorded through them |
+| Punch edits | edits-add, self-edits, shared accounts, edit spike, behaviour edits | edited punches; $ = net paid time added |
+| Others | long punches, minors, payroll IDs, pay anomalies, avoidable cost, labor | the matching day, punch or store records |
+
+Checks (`tools/test-focus.js`): every finding has a lens; for each lens, Σ stores = the organization figure the finding reports; for the top store, Σ employees = the store figure (paid above schedule: Σ employees ≥ the netted store figure); an employee drill-down contains only that GEID's records at that store. Lenses can overlap (manual and edits describe time already counted in late, early or unscheduled), so lens totals are never added together.
+
+## 7h. Store Overview and Explore drill-downs: which $ is shown
+
+No new formulas: every figure comes from the same engine results as the rest of the portal.
+
+| Figure | Source | Kind |
+|---|---|---|
+| Recorded labor cost | Σ punch pay at the store | Recorded |
+| Labor % (wage-based) | punch pay ÷ actual sales, complete months only | Recorded (not available when no complete month) |
+| Estimated additional labor cost | late + early + unscheduled + planned meals worked + OT premium, each at the employee's own rate | Estimate, non-overlapping |
+| Estimated avoidable cost | minutes beyond tolerance, netted per store-day, + OT premium from working past the schedule | Estimate |
+| Overtime cost | OT premium recorded in payroll (OT pay − OT hours × base rate) | Recorded |
+| Paid above schedule | max(0, paid − scheduled) per store-day × that day's rate | Estimate, overlaps the categories |
+| Manual punches $ | early / late / unscheduled time recorded through manual punches | Estimate, overlaps the categories |
+| Punch edits $ | net paid time added by edits (forgotten clock-outs excluded) | Estimate, overlaps the categories |
+| Minors, missed / short breaks | counts only | Not costed: no premium or penalty data |
+| Labor $ not flexed / vs peer SPLH | excess hours × the store's average rate | Estimate |
+
+Overlapping figures are shown next to the non-overlapping categories, never added to them. Hours above schedule are not all avoidable; only the avoidable estimate is labelled so.
+
+Manual clock-in vs clock-out comes from the punch audit log (entries "Punch Added" with method MANUAL). "Entered late" means the entry was made more than the retro-lag rule (60 min) after the time it records. OT approvals are not in the data, so "unauthorized overtime" is not claimed; the premium from working past the schedule is shown instead.
+
 ## 8. Trends and recurrence
 
 - Monthly rates are normalised per 100 paid hours, so a partial month compares fairly. March 2026 has 30 of 31 days, because data starts on 2 March.

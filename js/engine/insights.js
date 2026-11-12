@@ -21,7 +21,10 @@
   const H = (min) => Math.round(min / 60).toLocaleString('en-US') + ' h';
   const N = (v) => Math.round(v).toLocaleString('en-US');
   const P = (v, d) => (v * 100).toFixed(d == null ? 1 : d) + '%';
-  const list = (a, n) => { a = a.slice(0, n || 3); return a.length <= 1 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; };
+  // Lists carry an invisible separator (U+2063) before each joiner so the finding card can show one bullet
+  // per item; the UI's escape helper strips it, so everywhere else the text reads normally.
+  const LS = '⁣';
+  const list = (a, n) => { a = a.slice(0, n || 3); return a.length <= 1 ? a.join('') : a.slice(0, -1).join(LS + ', ') + LS + ' and ' + a[a.length - 1]; };
 
   function sevCost(cost, labor) {
     const s = labor ? cost / labor : 0;
@@ -631,7 +634,7 @@
             title: opts.title(list, cost, avoid),
             severity: list.some((p) => p.severity === 'Critical') || list.length >= 50 ? 'High' : 'Medium',
             what: `${N(list.length)} employee${list.length === 1 ? '' : 's'} at ${N(storesN)} store${storesN === 1 ? '' : 's'} show this as a recurring pattern in the selected period (at least ${B.rules.minOcc} occurrences and a ${B.rules.minStreak}+ working-day streak, ${P(B.rules.minShare, 0)}+ of working days, or ${B.rules.minBest10}+ of any 10 working days). Longest run: ${longest.name} (GEID ${longest.g}), ${N(longest.streak)} consecutive ${longest.unit || 'working days'}.`,
-            where: `Highest cost: ${list.length ? top.map((p) => `${p.name} · GEID ${p.g} · ${p.storeName} — ${$(p.cost)}: ${p.description}`).join(' | ') : '—'}`,
+            where: `Highest cost: ${top.map((p) => `${p.name} (GEID ${p.g}, store ${p.storeName}) ${$(p.cost)}${p.streak >= 2 && p.cat !== 'combined' ? `, ${p.streak} consecutive ${p.unit || 'working days'}` : ''}`).join(LS + ', ')}`,
             why: opts.why,
             evidence: [
               `Dollar impact: ${$(cost)}${opts.avoidable && avoid ? `, of which ${$(avoid)} estimated avoidable` : ''}. ${opts.costNote}`,

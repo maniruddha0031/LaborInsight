@@ -64,12 +64,12 @@
     UI.$('#adHeat', el).innerHTML = UI.heatmap(topOver.map((s) => s.name), months.map((m) => F.monthShort(m.key)), (i, j) => {
       const x = sm[topOver[i].s + '|' + months[j].key]; return x && x.sch ? x.overPlan / x.sch : NaN;
     }, (v) => F.pct(v, 0));
-    UI.table(UI.$('#adTbl', el), { rows: R.stores, sortKey: 'overPlanCost', placeholder: 'Search stores', onRow: (r) => G.App.go('stores', { s: r.s }), cols: [
-      { key: 'name', label: 'Store' }, { key: 'schHrs', label: 'Scheduled', num: true, fmt: F.hrs }, { key: 'paidHrs', label: 'Paid', num: true, fmt: F.hrs },
-      { key: 'varPct', label: 'Paid vs sched', num: true, fmt: (v) => F.pctSigned(v) }, { key: 'overPlanPct', label: '% above plan', num: true, fmt: (v) => F.pct(v), bar: '--c-neutral' },
-      { key: 'early', label: 'Early in', num: true, fmt: F.hrsFromMin }, { key: 'late', label: 'Late out', num: true, fmt: F.hrsFromMin },
-      { key: 'unsch', label: 'Unscheduled', num: true, fmt: F.hrsFromMin }, { key: 'mealSkip', label: 'Skipped meal', num: true, fmt: F.hrsFromMin },
-      { key: 'noShow', label: 'No-show', num: true, fmt: F.hrsFromMin }, { key: 'avoid', label: 'Avoidable $', num: true, fmt: F.money }] });
+    UI.table(UI.$('#adTbl', el), { rows: R.stores, sortKey: 'overPlanCost', placeholder: 'Search stores', onRow: (r) => G.App.explore('adherence', 'overplan', { s: r.s }), cols: [
+      { key: 'name', label: 'Store' }, { key: 'overPlanCost', label: '$ above schedule', num: true, fmt: F.money, bar: '--c-late', title: 'Cost of paid hours above the store\'s schedule, netted per store-day (estimate)' },
+      { key: 'overPlanHrs', label: 'Hours above', num: true, fmt: F.hrs }, { key: 'overPlanPct', label: '% above plan', num: true, fmt: (v) => F.pct(v) },
+      { key: 'cLate', label: 'Late out $', num: true, fmt: F.money }, { key: 'cEarly', label: 'Early in $', num: true, fmt: F.money }, { key: 'cUnsch', label: 'Unscheduled $', num: true, fmt: F.money }, { key: 'cMeal', label: 'Meals worked $', num: true, fmt: F.money },
+      { key: 'avoid', label: 'Avoidable $', num: true, fmt: F.money }, { key: 'schHrs', label: 'Scheduled h', num: true, fmt: F.hrs }, { key: 'paidHrs', label: 'Paid h', num: true, fmt: F.hrs }, { key: 'noShow', label: 'No-show', num: true, fmt: F.hrsFromMin }] });
+    UI.$('#adTbl', el).insertAdjacentHTML('beforebegin', '<p class="note" style="margin-top:-4px">Click a store for its schedule vs actual analysis only. The store\'s complete overview is under Stores in the sidebar.</p>');
   };
 
   // ===================== OVERTIME =====================
@@ -93,19 +93,23 @@
             <li class="info">${F.n(t.over40NoOt)} employee-weeks went over ${o.threshold / 60} h with no OT paid — mostly ${esc(Object.entries(o.noOtByJob).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([j, n]) => `${j} (${F.n(n)})`).join(', '))}. Consistent with OT-exempt roles; not counted as leakage.</li>
             <li class="info">Scheduled OT = the part of OT that the published schedule already exceeded ${o.threshold / 60} h; drift OT = the rest.</li></ul></div>
         </div>
+        ${R.stores.length > 1 ? '<div class="panel"><h3>Stores by overtime premium</h3><p class="note" style="margin-top:-4px">Click a store for its overtime analysis only.</p><div id="otS"></div></div>' : ''}
         <div class="panel"><h3>Highest-premium employee-weeks</h3><div id="otW"></div></div>
         <div class="panel"><h3>Employees</h3><div id="otE"></div></div>
       </div>`;
     UI.chart(UI.$('#otM', el), { stacked: true, labels: ms.map((m) => F.monthShort(m.key)), series: [
       { label: 'Scheduled OT', data: ms.map((m) => (o.byMonth[m.key] || {}).premSched || 0), color: '--c-ot', stack: 'a' },
       { label: 'Drift OT', data: ms.map((m) => (o.byMonth[m.key] || {}).premDrift || 0), color: '--c-late', stack: 'a' }], fmtY: F.moneyK });
-    UI.table(UI.$('#otW', el), { rows: o.topWeeks, sortKey: 'prem', pageSize: 15, placeholder: 'Search GEID or store', onRow: (r) => G.App.go('employees', { g: r.g }), cols: [
+    if (UI.$('#otS', el)) UI.table(UI.$('#otS', el), { rows: R.stores.filter((s) => s.otHrs > 0), sortKey: 'otPrem', pageSize: 15, placeholder: 'Search stores', onRow: (r) => G.App.explore('overtime', 'ot', { s: r.s }), cols: [
+      { key: 'name', label: 'Store' }, { key: 'otPrem', label: 'OT premium (recorded)', num: true, fmt: F.money, bar: '--c-ot' }, { key: 'otDrift', label: 'From working past schedule', num: true, fmt: F.money, title: 'Premium on overtime the schedule did not plan — part of the avoidable estimate' },
+      { key: 'otHrs', label: 'OT hours', num: true, fmt: F.hrs }, { key: 'emps', label: 'Employees', num: true, fmt: F.n }] });
+    UI.table(UI.$('#otW', el), { rows: o.topWeeks, sortKey: 'prem', pageSize: 15, placeholder: 'Search GEID or store', onRow: (r) => G.App.explore('overtime', 'ot', { s: r.store, g: r.g }), cols: [
       { key: 'g', label: 'Employee', text: (r) => (E[r.g] || {}).name + ' ' + r.g, fmt: (v) => `${esc((E[v] || {}).name || '')}<span class="sub">GEID ${esc(v)}</span>` },
       { key: 'store', label: 'Store', fmt: (v) => esc(sn(R, v)) }, { key: 'week', label: 'Week of' },
       { key: 'sched', label: 'Scheduled', num: true, fmt: F.hrsFromMin }, { key: 'paid', label: 'Paid', num: true, fmt: F.hrsFromMin },
       { key: 'ot', label: 'OT', num: true, fmt: F.hrsFromMin }, { key: 'schedOt', label: 'of which scheduled', num: true, fmt: F.hrsFromMin },
       { key: 'prem', label: 'Premium', num: true, fmt: F.money, bar: '--c-ot' }, { key: 'multi', label: 'Multi-store', fmt: (v) => (v ? 'Yes' : '') }] });
-    UI.table(UI.$('#otE', el), { rows: R.employees.filter((e) => e.otHrs > 0), sortKey: 'otPrem', pageSize: 20, placeholder: 'Search name or GEID', onRow: (r) => G.App.go('employees', { g: r.g }), cols: G.LCIViews.empCols('otPrem') });
+    UI.table(UI.$('#otE', el), { rows: R.employees.filter((e) => e.otHrs > 0), sortKey: 'otPrem', pageSize: 20, placeholder: 'Search name or GEID', onRow: (r) => G.App.explore('overtime', 'ot', { g: r.g }), cols: G.LCIViews.empCols('otPrem') });
   };
 
   // ===================== PUNCH INTEGRITY =====================
@@ -154,9 +158,11 @@
       { label: 'Manual entry', data: mm.map((x) => share(x, (k) => k === 'MANUAL')), color: '--c-unsch', stack: 'a' },
       { label: 'Biometric', data: mm.map((x) => share(x, (k) => /BIO|FACE|FINGER/.test(k))), color: '--c-meal', stack: 'a' }], fmtY: (v) => F.n1(v) + '%', suggestedMax: 100 });
     UI.table(UI.$('#inEd', el), { rows: I.editors.filter((e) => e.kind !== 'system'), sortKey: 'rows', pageSize: 15, placeholder: 'Search editors', cols: G.LCIViews.editorCols() });
-    UI.table(UI.$('#inSt', el), { rows: R.stores, sortKey: 'manualPct', placeholder: 'Search stores', onRow: (r) => G.App.go('stores', { s: r.s }), cols: [
-      { key: 'name', label: 'Store' }, { key: 'manualPct', label: 'Manual punch share', num: true, fmt: (v) => F.pct(v), bar: '--c-unsch' }, { key: 'retro', label: 'Late manual entries', num: true, fmt: F.n },
-      { key: 'editPct', label: 'Punches edited', num: true, fmt: (v) => F.pct(v) }, { key: 'editAddMin', label: 'Time added by edits', num: true, fmt: F.hrsFromMin }, { key: 'editAddCost', label: 'Edit $ added', num: true, fmt: F.money },
+    UI.$('#inSt', el).insertAdjacentHTML('beforebegin', '<p class="note" style="margin-top:-4px">Click a store for its punch-edit analysis only (manual punches have their own page).</p>');
+    UI.table(UI.$('#inSt', el), { rows: R.stores, sortKey: 'editNetCost', placeholder: 'Search stores', onRow: (r) => G.App.explore('integrity', 'edits', { s: r.s }), cols: [
+      { key: 'name', label: 'Store' }, { key: 'editNetCost', label: 'Net $ added by edits', num: true, fmt: F.money, bar: '--c-late', title: 'Paid time added minus removed by edits, excluding forgotten clock-out corrections, at the punch rate (estimate)' },
+      { key: 'editAddCost', label: 'Edit $ added (gross)', num: true, fmt: F.money }, { key: 'editAddMin', label: 'Time added by edits', num: true, fmt: F.hrsFromMin }, { key: 'editPct', label: 'Punches edited', num: true, fmt: (v) => F.pct(v) },
+      { key: 'manualPct', label: 'Manual punch share', num: true, fmt: (v) => F.pct(v) }, { key: 'retro', label: 'Late manual entries', num: true, fmt: F.n },
       { key: 'longPunches', label: '≥14h punches', num: true, fmt: F.n }] });
   };
 
@@ -182,10 +188,11 @@
       </div>`;
     const ms = R.meta.months;
     UI.chart(UI.$('#cmM', el), { type: 'line', labels: ms.map((m) => F.monthShort(m.key)), series: [{ label: 'No meal recorded', data: ms.map((m) => { const x = b.byMonth[m.key]; return x && x.eligible ? x.missed / x.eligible * 100 : null; }), color: '--c-meal', type: 'line' }], fmtY: (v) => F.n(v) + '%', beginAtZero: true, suggestedMax: 100 });
-    UI.table(UI.$('#cmS', el), { rows: R.stores, sortKey: 'missedMealPct', placeholder: 'Search stores', onRow: (r) => G.App.go('stores', { s: r.s }), cols: [
-      { key: 'name', label: 'Store' }, { key: 'missedMealPct', label: '6h+ shifts without meal', num: true, fmt: (v) => F.pct(v, 0), bar: '--c-meal' }, { key: 'shortMeals', label: 'Short meals', num: true, fmt: F.n },
+    UI.$('#cmS', el).insertAdjacentHTML('beforebegin', '<p class="note" style="margin-top:-4px">$ = pay for planned unpaid meals that were worked through. Missed or short breaks and minor-rule issues are compliance exposure: no premium pay or penalty is in the data, so no $ is claimed for them. Click a store for its meal-break analysis only.</p>');
+    UI.table(UI.$('#cmS', el), { rows: R.stores, sortKey: 'cMeal', placeholder: 'Search stores', onRow: (r) => G.App.explore('compliance', 'meal', { s: r.s }), cols: [
+      { key: 'name', label: 'Store' }, { key: 'cMeal', label: 'Pay for meals worked', num: true, fmt: F.money, bar: '--c-meal' }, { key: 'missedMealPct', label: '6h+ shifts without meal', num: true, fmt: (v) => F.pct(v, 0) }, { key: 'shortMeals', label: 'Short meals', num: true, fmt: F.n },
       { key: 'mealSkip', label: 'Planned meal worked', num: true, fmt: F.hrsFromMin }, { key: 'minorPunches', label: 'Minor punches', num: true, fmt: F.n }, { key: 'minorLate', label: 'Minor late-night', num: true, fmt: F.n }] });
-    UI.table(UI.$('#cmE', el), { rows: R.employees.filter((e) => e.missedMeals > 0), sortKey: 'missedMeals', pageSize: 15, placeholder: 'Search name or GEID', onRow: (r) => G.App.go('employees', { g: r.g }), cols: [
+    UI.table(UI.$('#cmE', el), { rows: R.employees.filter((e) => e.missedMeals > 0), sortKey: 'missedMeals', pageSize: 15, placeholder: 'Search name or GEID', onRow: (r) => G.App.explore('compliance', 'meal', { g: r.g }), cols: [
       { key: 'name', label: 'Employee', fmt: (v, r) => `${esc(v)}<span class="sub">GEID ${esc(r.g)}</span>` }, { key: 'storeName', label: 'Store' }, { key: 'age', label: 'Age', num: true, fmt: F.n },
       { key: 'missedMeals', label: 'Long shifts, no meal', num: true, fmt: F.n, bar: '--c-meal' }, { key: 'shortMeals', label: 'Short meals', num: true, fmt: F.n }, { key: 'mealSkip', label: 'Planned meal worked', num: true, fmt: F.hrsFromMin }] });
   };
@@ -219,14 +226,14 @@
     UI.chart(UI.$('#slS', el), { type: 'line', labels: lab, series: [{ label: 'Actual SPLH', data: bm.map((m) => m.splh), color: '--c-early', type: 'line' }, { label: 'Scheduled SPLH', data: bm.map((m) => m.schedSplh), color: '--c-neutral', type: 'line', dash: [5, 4] }], fmtY: F.n1, beginAtZero: false });
     UI.chart(UI.$('#slL', el), { type: 'line', labels: lab, series: [{ label: 'Labor %', data: bm.map((m) => m.laborPct * 100), color: '--c-late', type: 'line' }], fmtY: (v) => F.n1(v) + '%', beginAtZero: false });
     const nf = [];
-    for (const p of S.perStore) for (const x of p.nonFlex) nf.push(Object.assign({ s: p.s, name: sn(R, p.s) }, x));
-    UI.table(UI.$('#slNF', el), { rows: nf, sortKey: 'excessHrs', pageSize: 8, placeholder: 'Search stores', onRow: (r) => G.App.go('stores', { s: r.s }), cols: [
+    for (const p of S.perStore) for (const x of p.nonFlex) nf.push(Object.assign({ s: p.s, name: sn(R, p.s), excessCost: x.excessHrs * (x.rate || 0) }, x));
+    UI.table(UI.$('#slNF', el), { rows: nf, sortKey: 'excessCost', pageSize: 8, placeholder: 'Search stores', onRow: (r) => G.App.explore('sales', 'labor', { s: r.s }), cols: [{ key: 'excessCost', label: 'Labor $ not flexed (est.)', num: true, fmt: F.money, title: 'Hours above the prior month\'s SPLH × that month\'s average pay rate' },
       { key: 'name', label: 'Store' }, { key: 'month', label: 'Month', fmt: (v) => F.monthLabel(v) }, { key: 'salesChg', label: 'Sales', num: true, fmt: (v) => F.pctSigned(v) },
       { key: 'hoursChg', label: 'Paid hours', num: true, fmt: (v) => F.pctSigned(v) }, { key: 'excessHrs', label: 'Hours vs prior SPLH', num: true, fmt: F.hrs }] });
-    UI.table(UI.$('#slT', el), { rows: S.perStore.map((x) => Object.assign({ name: sn(R, x.s) }, x)), sortKey: 'peerGapHrs', placeholder: 'Search stores', onRow: (r) => G.App.go('stores', { s: r.s }), cols: [
-      { key: 'name', label: 'Store' }, { key: 'tier', label: 'Volume band' }, { key: 'as', label: 'Actual sales', num: true, fmt: F.moneyK }, { key: 'ach', label: 'Achievement', num: true, fmt: (v) => F.pct(v) },
+    UI.table(UI.$('#slT', el), { rows: S.perStore.map((x) => Object.assign({ name: sn(R, x.s) }, x)), sortKey: 'peerGapCost', placeholder: 'Search stores', onRow: (r) => G.App.explore('sales', 'labor', { s: r.s }), cols: [
+      { key: 'name', label: 'Store' }, { key: 'pay', label: 'Labor $', num: true, fmt: F.moneyK }, { key: 'peerGapCost', label: 'Labor $ vs peer SPLH (est.)', num: true, fmt: F.money, bar: '--c-neutral', title: 'Hours above similar-volume peers\' SPLH × the store\'s average pay rate' }, { key: 'tier', label: 'Volume band' }, { key: 'as', label: 'Actual sales', num: true, fmt: F.moneyK }, { key: 'ach', label: 'Achievement', num: true, fmt: (v) => F.pct(v) },
       { key: 'fcstBias', label: 'Forecast bias', num: true, fmt: (v) => F.pctSigned(v) }, { key: 'splh', label: 'SPLH', num: true, fmt: F.n1 }, { key: 'peerSplh', label: 'Peer SPLH', num: true, fmt: F.n1 },
-      { key: 'peerGapHrs', label: 'Hours vs peer', num: true, fmt: F.hrs, bar: '--c-neutral' }, { key: 'laborPct', label: 'Labor %', num: true, fmt: (v) => F.pct(v) },
+      { key: 'peerGapHrs', label: 'Hours vs peer', num: true, fmt: F.hrs }, { key: 'laborPct', label: 'Labor %', num: true, fmt: (v) => F.pct(v) },
       { key: 'corrSalesHours', label: 'Hours follow sales (r)', num: true, fmt: (v) => (F.ok(v) ? v.toFixed(2) : '—'), title: 'Correlation of monthly paid hours with monthly sales; low or negative = labor does not flex with demand' }] });
   };
 
@@ -268,25 +275,45 @@
       { key: 'splh', label: 'SPLH', num: true, fmt: F.n1 }, { key: 'laborPct', label: 'Labor %', num: true, fmt: (v) => F.pct(v) }] });
   };
 
+  // Non-overlapping parts of the additional labor cost (they add up to grossAdd) and the related, overlapping views.
+  const PARTS = [
+    { k: 'cLate', label: 'Late clock-outs', lens: 'late', hrs: (r) => r.late / 60, n: (r) => `${F.n(r.nLateEv)} events`, color: '--c-late' },
+    { k: 'cEarly', label: 'Early clock-ins', lens: 'early', hrs: (r) => r.early / 60, n: (r) => `${F.n(r.nEarlyEv)} events`, color: '--c-early' },
+    { k: 'cUnsch', label: 'Unscheduled shifts', lens: 'unsch', hrs: (r) => r.unsch / 60, n: () => '', color: '--c-unsch' },
+    { k: 'cMeal', label: 'Planned meals worked', lens: 'meal', hrs: (r) => r.mealSkip / 60, n: () => '', color: '--c-meal' },
+    { k: 'otPrem', label: 'Overtime premium', lens: 'ot', hrs: (r) => r.otHrs, n: () => 'recorded', color: '--c-ot' },
+  ];
+
   async function storeDetail(el, R, s) {
     el.innerHTML = '<div class="note">Loading store…</div>';
     const d = await G.App.query({ type: 'store', s });
     if (!d || !d.row) { el.innerHTML = '<div class="msg err">Store not found in this dataset.</div>'; return; }
     const r = d.row, ms = d.months;
     const pers = R.trends.persistent.find((x) => x.s === s);
-    el.innerHTML = `<div class="crumb"><button data-go="stores">Stores</button><span class="sep">›</span><span class="cur">${esc(r.name)}</span></div>
-      <h2>Store ${esc(r.name)}</h2><p class="lead">${F.n(r.emps)} employees (by primary store) · ${F.hrs(r.paidHrs)} paid · ${F.money(r.labor)} labor${pers ? ` · <span class="tag risk">top quartile for over-plan cost in ${pers.months} of ${R.meta.months.length} months</span>` : ''}</p>
+    const parts = PARTS.map((p) => Object.assign({ v: r[p.k] || 0 }, p)).sort((x, y) => y.v - x.v);
+    const partSum = parts.reduce((t, p) => t + p.v, 0);
+    const top = parts[0];
+    const lpOk = R.sales.available && F.ok(r.laborPct);
+    const ctxGo = (lens) => G.App.explore('stores', lens, { s });
+    el.innerHTML = `<div class="crumb"><button data-go="overview">Organization</button><span class="sep">/</span><button data-go="stores">Stores</button><span class="sep">/</span><span class="cur">Store ${esc(r.name)}</span></div>
+      <h2>Store Overview — Store ${esc(r.name)}</h2><p class="lead">The complete picture for this store in the selected dates: ${F.n(r.emps)} employees (by primary store) · ${F.hrs(r.paidHrs)} paid${pers ? ` · <span class="tag risk">top quartile for over-plan cost in ${pers.months} of ${R.meta.months.length} months</span>` : ''}</p>
       <div class="stack">
-        <div class="kpis k5">
-          ${UI.kpi({ label: 'Paid vs scheduled', value: F.pctSigned(r.varPct), sub: `${F.hrs(r.paidHrs)} vs ${F.hrs(r.schHrs)}` })}
-          ${UI.kpi({ label: 'Labor above plan', value: F.money(r.overPlanCost), sub: `${F.hrs(r.overPlanHrs)} · ${F.pct(r.overPlanPct)} of schedule`, cls: 'warn' })}
-          ${UI.kpi({ label: 'Estimated avoidable', value: F.money(r.avoid), sub: `$${r.avoidPerHr.toFixed(2)} per paid hour`, cls: 'bad' })}
-          ${UI.kpi({ label: 'OT premium', value: F.money(r.otPrem), sub: `${F.hrs(r.otHrs)} OT` })}
-          ${UI.kpi({ label: 'Manual punch share', value: F.pct(r.manualPct), sub: `${F.pct(r.editPct)} of punches edited` })}
+        <div class="kpis k6">
+          ${UI.kpi({ label: 'Recorded labor cost', value: F.money(r.labor), sub: `<span class="tag conf">Recorded</span> ${F.hrs(r.paidHrs)} paid hours`, cls: 'accent' })}
+          ${UI.kpi({ label: 'Labor % (wage-based)', value: lpOk ? F.pct(r.laborPct) : '—', sub: lpOk ? `punch pay ÷ ${F.moneyK(r.sales)} actual sales · complete months` : esc(R.sales.available ? 'No complete sales months for this store' : R.sales.reason || 'Sales not available for this period'), title: 'Wages from punches only (no taxes or benefits) ÷ actual sales; partial months are excluded, never prorated' })}
+          ${UI.kpi({ label: 'Estimated additional labor cost', value: F.money(r.grossAdd), sub: '<span class="tag est">Estimate</span> early, late, unscheduled, meals, OT premium — each counted once', cls: 'warn', title: 'Non-overlapping parts at each employee\'s own pay rate; OT counted as premium only' })}
+          ${UI.kpi({ label: 'Estimated avoidable cost', value: F.money(r.avoid), sub: `<span class="tag est">Estimate</span> beyond tolerance, netted per day · $${r.avoidPerHr.toFixed(2)} per paid h`, cls: 'bad' })}
+          ${UI.kpi({ label: 'Overtime cost', value: F.money(r.otPrem), sub: `<span class="tag conf">Recorded</span> premium · ${F.hrs(r.otHrs)} OT · ${F.money(r.otDrift)} from working past schedule` })}
+          ${UI.kpi({ label: 'Top cost leakage', cls: 'txt', value: top && top.v ? esc(top.label) : '—', sub: top && top.v ? `${F.money(top.v)} · ${F.pct(top.v / Math.max(1e-9, partSum), 0)} of additional cost` : 'no additional cost recorded' })}
         </div>
         <div class="grid2">
+          <div class="panel"><h3>Where the additional cost comes from</h3><p class="note" style="margin-top:-4px">Non-overlapping — these add up to ${F.money(partSum)}. Click a category for that problem at this store only.</p><div id="sdParts"></div></div>
+          <div class="panel"><h3>Related problems (overlap the categories — not added)</h3><div id="sdRel"></div>
+            <p class="note" style="margin:8px 0 0">These describe <i>how</i> part of the time above arose, so their $ is already inside the categories on the left. Compliance items carry no $: no premium pay or penalty is recorded in the data.</p></div>
+        </div>
+        <div class="grid2">
+          <div class="panel"><h3>Additional labor cost by month</h3>${UI.legend(PARTS.map((p) => ({ label: p.label, color: p.color })))}<div class="chartbox"><canvas id="sdX"></canvas></div></div>
           <div class="panel"><h3>Paid vs scheduled hours by month</h3>${UI.legend([{ label: 'Paid', color: '--c-early' }, { label: 'Scheduled', color: '--c-neutral' }])}<div class="chartbox"><canvas id="sdH"></canvas></div></div>
-          <div class="panel"><h3>Where the extra time came from, by month</h3>${UI.legend([{ label: 'Unscheduled', color: '--c-unsch' }, { label: 'Late out', color: '--c-late' }, { label: 'Early in', color: '--c-early' }, { label: 'Planned meal worked', color: '--c-meal' }])}<div class="chartbox"><canvas id="sdX"></canvas></div></div>
         </div>
         <div class="grid2">
           <div class="panel"><h3>Monthly detail</h3><div id="sdM"></div></div>
@@ -294,18 +321,32 @@
         </div>
         <div class="panel"><h3>Employees at this store — by additional labor cost</h3><div id="sdE"></div></div>
         ${d.editors.length ? '<div class="panel"><h3>Editors whose edits are mostly at this store</h3><div id="sdEd"></div></div>' : ''}
+        <div class="row"><button class="btn" id="sdScope">Show every finding for this store only (sets the store filter) →</button></div>
       </div>`;
-    UI.$('[data-go]', el).addEventListener('click', () => G.App.go('stores'));
+    UI.$$('[data-go]', el).forEach((b) => b.addEventListener('click', () => G.App.go(b.dataset.go, {})));
+    UI.$('#sdScope', el).addEventListener('click', () => { G.App.applyFilter(Object.assign({}, G.App.filter, { stores: [s] })); G.App.go('findings', {}); });
+    UI.$('#sdParts', el).innerHTML = UI.bars(parts.map((p) => ({ label: p.label, sub: [F.ok(p.hrs(r)) ? F.hrs(p.hrs(r)) : '', p.n(r)].filter(Boolean).join(' · '), value: p.v, display: F.money(p.v), sub2: F.pct(p.v / Math.max(1e-9, partSum), 0), color: p.color })));
+    UI.$$('#sdParts .brow', el).forEach((b, i) => { b.style.cursor = 'pointer'; b.addEventListener('click', () => ctxGo(parts[i].lens)); });
+    const rel = [
+      { label: 'Paid hours above schedule', lens: 'overplan', v: r.overPlanCost, sub: `${F.hrs(r.overPlanHrs)} · ${F.pct(r.overPlanPct)} of schedule · netted per day` },
+      { label: 'Manual punches', lens: 'manual', v: r.manExtraCost, sub: `${F.n(r.manN)} punches · ${F.pct(r.manualPct)} of punches` },
+      { label: 'Punch edits (net time added)', lens: 'edits', v: r.editNetCost, sub: `${F.n(r.edited)} edited punches` },
+      { label: 'Minors not flagged as minors', lens: 'minor', v: null, sub: `${F.n(r.minorPunches)} minor punches · ${F.n(r.minorLate)} late-night` },
+      { label: 'Long shifts without a meal', lens: 'meal', v: null, sub: `${F.pct(r.missedMealPct, 0)} of 6 h+ shifts · ${F.n(r.shortMeals)} short meals` },
+    ];
+    UI.table(UI.$('#sdRel', el), { search: false, rows: rel, onRow: (x) => ctxGo(x.lens), cols: [{ key: 'label', label: 'Problem', fmt: (v, x) => `${esc(v)}<span class="sub">${x.sub}</span>` },
+      { key: 'v', label: '$', num: true, fmt: (v) => (v == null ? '<span class="note">not costed</span>' : F.money(v)) }] });
     const lab = ms.map((m) => F.monthShort(m.month));
+    UI.chart(UI.$('#sdX', el), { stacked: true, labels: lab, series: PARTS.map((p) => ({ label: p.label, data: ms.map((m) => m[p.k] || 0), color: p.color, stack: 'a' })), fmtY: F.moneyK });
     UI.chart(UI.$('#sdH', el), { type: 'line', labels: lab, series: [{ label: 'Paid', data: ms.map((m) => m.act / 60), color: '--c-early', type: 'line' }, { label: 'Scheduled', data: ms.map((m) => m.sch / 60), color: '--c-neutral', type: 'line', dash: [5, 4] }], fmtY: F.hrsK, beginAtZero: false });
-    UI.chart(UI.$('#sdX', el), { stacked: true, labels: lab, series: [
-      { label: 'Unscheduled', data: ms.map((m) => m.unsch / 60), color: '--c-unsch', stack: 'a' }, { label: 'Late out', data: ms.map((m) => m.late / 60), color: '--c-late', stack: 'a' },
-      { label: 'Early in', data: ms.map((m) => m.early / 60), color: '--c-early', stack: 'a' }, { label: 'Planned meal worked', data: ms.map((m) => m.mealSkip / 60), color: '--c-meal', stack: 'a' }], fmtY: F.hrsK });
-    UI.table(UI.$('#sdM', el), { search: false, rows: ms, cols: [{ key: 'label', label: 'Month' }, { key: 'act', label: 'Paid', num: true, fmt: F.hrsFromMin }, { key: 'overPlan', label: 'Above plan', num: true, fmt: F.hrsFromMin },
-      { key: 'avoid', label: 'Avoidable $', num: true, fmt: F.money }, { key: 'otPrem', label: 'OT prem.', num: true, fmt: F.money }, { key: 'sales', label: 'Sales', num: true, fmt: F.moneyK }, { key: 'splh', label: 'SPLH', num: true, fmt: F.n1 }, { key: 'laborPct', label: 'Labor %', num: true, fmt: (v) => F.pct(v) }] });
+    const addOf = (m) => (m.cEarly || 0) + (m.cLate || 0) + (m.cUnsch || 0) + (m.cMeal || 0) + (m.otPrem || 0);
+    UI.table(UI.$('#sdM', el), { search: false, rows: ms, cols: [{ key: 'label', label: 'Month' }, { key: 'labor', label: 'Labor $', num: true, fmt: F.moneyK }, { key: 'add', label: 'Additional $', num: true, val: addOf, fmt: F.money },
+      { key: 'avoid', label: 'Avoidable $', num: true, fmt: F.money }, { key: 'cOverPlan', label: 'Above plan $', num: true, fmt: F.money }, { key: 'otPrem', label: 'OT prem.', num: true, fmt: F.money },
+      { key: 'act', label: 'Paid h', num: true, fmt: F.hrsFromMin }, { key: 'laborPct', label: 'Labor %', num: true, fmt: (v) => F.pct(v) }] });
     const dw = DOW_ORDER.map((i) => d.dow[i]);
-    UI.table(UI.$('#sdD', el), { search: false, rows: dw, cols: [{ key: 'dow', label: 'Day' }, { key: 'act', label: 'Paid', num: true, fmt: F.hrsFromMin }, { key: 'sch', label: 'Scheduled', num: true, fmt: F.hrsFromMin },
-      { key: 'var', label: 'Paid vs sched', num: true, val: (x) => pctOf(x.act, x.sch) - 1, fmt: (v) => F.pctSigned(v) }, { key: 'unsch', label: 'Unscheduled', num: true, fmt: F.hrsFromMin }, { key: 'late', label: 'Late out', num: true, fmt: F.hrsFromMin }, { key: 'early', label: 'Early in', num: true, fmt: F.hrsFromMin }] });
+    UI.table(UI.$('#sdD', el), { search: false, rows: dw, cols: [{ key: 'dow', label: 'Day' }, { key: 'add', label: 'Additional $', num: true, val: (x) => (x.cEarly || 0) + (x.cLate || 0) + (x.cUnsch || 0) + (x.cMeal || 0), fmt: F.money, title: 'Early, late, unscheduled and meals worked (OT premium is weekly, so not split by weekday)' },
+      { key: 'cLate', label: 'Late out $', num: true, fmt: F.money }, { key: 'cEarly', label: 'Early in $', num: true, fmt: F.money }, { key: 'cUnsch', label: 'Unsched. $', num: true, fmt: F.money },
+      { key: 'act', label: 'Paid h', num: true, fmt: F.hrsFromMin }, { key: 'var', label: 'Paid vs sched', num: true, val: (x) => pctOf(x.act, x.sch) - 1, fmt: (v) => F.pctSigned(v) }] });
     const empAll = R.employees.filter((x) => x.store === s);
     UI.table(UI.$('#sdE', el), { rows: empAll.length ? empAll : d.emps, sortKey: 'grossAdd', pageSize: 15, placeholder: 'Search name or GEID', onRow: (x) => G.App.go('employees', { g: x.g }), cols: G.LCIViews.empCols('cost') });
     if (d.editors.length) UI.table(UI.$('#sdEd', el), { search: false, rows: d.editors, sortKey: 'rows', cols: G.LCIViews.editorCols() });
@@ -331,8 +372,8 @@
     const d = await G.App.query({ type: 'employee', g });
     if (!d || !d.emp) { el.innerHTML = '<div class="msg err">GEID not found in this dataset.</div>'; return; }
     const e = d.emp, m = d.master;
-    el.innerHTML = `<div class="crumb"><button data-go="employees">Employees</button><span class="sep">›</span><span class="cur">${esc(e.name)}</span></div>
-      <h2>${esc(e.name)}</h2>
+    el.innerHTML = `<div class="crumb"><button data-go="overview">Organization</button><span class="sep">/</span><button data-go="employees">Employees</button><span class="sep">/</span><span class="cur">${esc(e.name)} · GEID ${esc(m.geid)}</span></div>
+      <h2>Employee Profile — ${esc(e.name)}</h2>
       <div class="profile" style="margin-bottom:14px">
         <div><div class="pl">GEID</div><div class="pv">${esc(m.geid)}</div></div><div><div class="pl">Job</div><div class="pv">${esc(m.job || '—')}</div></div>
         <div><div class="pl">Stores</div><div class="pv">${esc((m.stores || []).join(', '))}</div></div><div><div class="pl">Age on record</div><div class="pv">${F.n(m.age)}</div></div>
@@ -351,7 +392,7 @@
         <div class="panel"><div class="phead"><h3>Day by day: schedule vs punches</h3><label class="note"><input type="checkbox" id="edOnly" checked> Only days with a deviation</label></div><div id="edD"></div></div>
         <div class="grid2"><div class="panel"><h3>Edited punches</h3><div id="edE"></div></div><div class="panel"><h3>Weeks with overtime</h3><div id="edW"></div></div></div>
       </div>`;
-    UI.$('[data-go]', el).addEventListener('click', () => G.App.go('employees'));
+    UI.$$('[data-go]', el).forEach((b) => b.addEventListener('click', () => G.App.go(b.dataset.go, {})));
     if (d.patterns && d.patterns.length && G.LCIViews.patternTable) G.LCIViews.patternTable(UI.$('#edP', el), R, d.patterns, { compact: false, pageSize: 10, noClick: true });
     const ms = d.months;
     UI.chart(UI.$('#edM', el), { stacked: true, labels: ms.map((x) => F.monthShort(x.month)), series: [
@@ -414,7 +455,7 @@
     UI.table(UI.$('#trDir', el), { search: false, rows, sortKey: 'status', desc: false, cols: [{ key: 'm', label: 'Metric' }, { key: 'first', label: 'First 3 mo.', num: true }, { key: 'last', label: 'Last 3 mo.', num: true },
       { key: 'change', label: 'Change', num: true, fmt: (v) => F.pctSigned(v, 0) }, { key: 'status', label: 'Direction', fmt: (v) => `<span class="tag ${v === 'Worsening' ? 'risk' : v === 'Improving' ? 'good' : ''}">${v}</span>` }] });
     const byS = Object.fromEntries(R.stores.map((s) => [s.s, s]));
-    UI.table(UI.$('#trP', el), { search: false, pageSize: 12, rows: R.trends.persistent.map((p) => Object.assign({ months: p.months }, byS[p.s] || { name: p.s })), sortKey: 'months', onRow: (r) => r.s && G.App.go('stores', { s: r.s }), cols: [
+    UI.table(UI.$('#trP', el), { search: false, pageSize: 12, rows: R.trends.persistent.map((p) => Object.assign({ months: p.months }, byS[p.s] || { name: p.s })), sortKey: 'months', onRow: (r) => r.s && G.App.explore('trends', 'overplan', { s: r.s }), cols: [
       { key: 'name', label: 'Store' }, { key: 'months', label: 'Months in top quartile', num: true, fmt: F.n }, { key: 'overPlanPct', label: '% above plan', num: true, fmt: (v) => F.pct(v) }, { key: 'avoid', label: 'Avoidable $', num: true, fmt: F.money }] });
     UI.table(UI.$('#trT', el), { search: false, rows: S, cols: [{ key: 'label', label: 'Month', fmt: (v, r) => esc(v) + (r.partial ? ' *' : '') }].concat(avail.map((m) => ({ key: m.k, label: m.label, num: true, fmt: m.fmt }))) });
   };

@@ -117,6 +117,221 @@ async function main() {
     await ev(`document.querySelector('#themeBtn').click()`);
     await sleep(500); await shot('23-overview-' + before);
 
+    // ---- 4b. finding presentation and contextual drill-downs (Finding → Store → Employee) ----
+    {
+      const fq = (q) => ev('App.query(' + JSON.stringify(Object.assign({ type: 'focus' }, q)) + ')');
+      const inFocus = (f, lvl) => "App.current==='focus' && App.params.f===" + JSON.stringify(f) + " && " + (lvl === 'org' ? "document.querySelector('#fcS tbody tr')" : lvl === 'store' ? "document.querySelector('#fcE tbody tr') && document.querySelector('#fcR')" : "document.querySelector('#fcAll') && document.querySelector('#fcR')");
+      await ev("App.go('findings')"); await sleep(500);
+      // Scenario 1 — structured bullets
+      const fid = await ev("(()=>{const c=[...document.querySelectorAll('#v-findings .fcard')][2]||document.querySelector('#v-findings .fcard');c.scrollIntoView();c.querySelector('.fhead').click();return c.id.slice(3)})()");
+      await until("document.querySelector('#fd-" + fid + " .fbody:not([hidden]) .drill table tbody tr')", 20000);
+      const card = await ev("(()=>{const c=document.querySelector('#fd-" + fid + "');const h=[...c.querySelectorAll('.fx h5')].map(x=>x.innerText.trim().toLowerCase());return {h, li:c.querySelectorAll('.fx .fx-pts li').length, big:c.querySelector('.fx-big').innerText, hl:c.querySelectorAll('.fx b.hlv').length, ev:!!c.querySelector('details.fx-ev') && !c.querySelector('details.fx-ev').open}})()");
+      check('Drill 1: expanded finding shows What happened / Where / Why it matters / Financial impact / What to do as bullets',
+        ['what happened', 'where', 'why it matters', 'financial impact', 'what to do'].every((k) => card.h.includes(k)) && card.li >= 5, card.h.join(' · ') + ' · ' + card.li + ' bullets');
+      check('Drill 1: $ headline and highlighted figures; evidence & method collapsed', /\$|h/.test(card.big) && card.hl >= 3 && card.ev, card.big + ' · ' + card.hl + ' highlighted values');
+      await shot('24-finding-bullets');
+      // Scenario 2 — store row → this finding for that store
+      await ev("window.scrollTo({top: document.querySelector('#fd-" + fid + " .drill').getBoundingClientRect().top + window.scrollY - 200})"); await sleep(300);
+      const yBefore = await ev('window.scrollY');
+      await ev("document.querySelector('#fd-" + fid + " .drill tbody tr').click()");
+      const lvl1 = await until("App.current==='focus' && document.querySelector('#v-focus h2')", 240000, 400) && await ev("App.params.g ? 'employee' : App.params.s ? 'store' : 'org'");
+      check('Drill 2: a finding row opens the contextual drill-down (not the generic page)', lvl1 && (await ev("App.params.f")) === fid, lvl1 + ' · ' + (await ev("document.querySelector('#v-focus h2') && document.querySelector('#v-focus h2').innerText")));
+      check('Drill 2: breadcrumbs Organization / Findings / finding / …', await ev("/Organization.*Findings/s.test(document.querySelector('#v-focus .crumb').innerText) && document.querySelector('#nav button[data-view=findings]').getAttribute('aria-selected')==='true'"), await ev("document.querySelector('#v-focus .crumb').innerText.replace(/\\n/g,' ')"));
+      await shot('25-focus-first');
+      // Back → finding still open, scroll restored
+      await ev('App.back()'); await sleep(900);
+      const back1 = await ev("({v:App.current, open:!!document.querySelector('#fd-" + fid + " .fbody:not([hidden])'), y:window.scrollY})");
+      check('Drill 4: Back returns to Findings with the same finding expanded and scroll position', back1.v === 'findings' && back1.open && Math.abs(back1.y - yBefore) < 60, 'y ' + back1.y + ' vs ' + yBefore);
+
+      // Scenarios 2/3/7/8 for each lens: org → store → employee, figures reconcile, records stay in context
+      const lenses = ['overplan', 'manual', 'ot', 'early', 'late', 'edits', 'meal'];
+      for (const lens of lenses) {
+        const ins = await ev("(()=>{const i=App.result.insights.find(x=>x.lens===" + JSON.stringify(lens) + ");return i?{id:i.id,title:i.title}:null})()");
+        if (!ins) { check('Drill (' + lens + '): finding present', false, 'no finding uses this lens'); continue; }
+        await ev("App.go('findings',{open:" + JSON.stringify(ins.id) + "})"); await sleep(600);
+        await ev("(()=>{const b=document.querySelector('#fd-" + ins.id + " [data-explore]');b&&b.click()})()");
+        const okOrg = await until(inFocus(ins.id, 'org'), 90000, 400);
+        const org = okOrg && await fq({ finding: ins.id });
+        const sumSt = org ? org.stores.reduce((a, r) => a + r.cost, 0) : NaN;
+        check('Drill (' + lens + '): "' + ins.title.slice(0, 50) + '" by store — Σ stores = finding total', okOrg && Math.abs(sumSt - org.summary.cost) < 1, org ? '$' + org.summary.cost.toFixed(2) + ' = Σ ' + org.stores.length + ' stores $' + sumSt.toFixed(2) : 'did not load');
+        if (!okOrg) continue;
+        await ev("document.querySelector('#fcS tbody tr').click()");
+        const okSt = await until(inFocus(ins.id, 'store'), 60000, 300);
+        const sp = await ev('App.params');
+        const st = okSt && await fq({ finding: ins.id, s: sp.s });
+        const sumE = st ? st.employees.reduce((a, r) => a + r.cost, 0) : NaN;
+        check('Drill (' + lens + '): store level shows only this finding for store ' + sp.s, okSt && st.records.every((r) => r.s === sp.s) && (lens === 'overplan' ? sumE >= st.summary.cost - 1 : Math.abs(sumE - st.summary.cost) < 1) && Math.abs((org.stores.find((x) => x.s === sp.s) || {}).cost - st.summary.cost) < 1,
+          st ? 'store $' + st.summary.cost.toFixed(2) + ' · Σ employees $' + sumE.toFixed(2) + ' · ' + st.recordsTotal + ' records · ' + st.employees.length + ' employees' : 'did not load');
+        if (lens === 'manual' || lens === 'late') await shot('26-focus-store-' + lens);
+        if (!okSt) continue;
+        await ev("document.querySelector('#fcE tbody tr').click()");
+        const okE = await until(inFocus(ins.id, 'emp'), 60000, 300);
+        const ep = await ev('App.params');
+        const em = okE && await fq({ finding: ins.id, s: ep.s, g: ep.g });
+        const sumR = em ? em.records.reduce((a, r) => a + r.cost, 0) : NaN;
+        const empRow = st.employees.find((x) => x.g === ep.g) || {};
+        check('Drill (' + lens + '): employee level has only GEID ' + ep.g + "'s records for this finding and store",
+          okE && em.records.length > 0 && em.records.every((r) => r.g === ep.g && r.s === ep.s) && Math.abs(sumR - em.summary.cost) < 0.5 && Math.abs(empRow.cost - em.summary.cost) < 0.5,
+          em ? em.name + ' · $' + em.summary.cost.toFixed(2) + ' · ' + em.records.length + ' records' : 'did not load');
+        if (lens === 'manual' || lens === 'late') await shot('27-focus-employee-' + lens);
+        if (lens === 'manual') {
+          check('Drill 3: employee records show business date, schedule, clock-in/out, hours and $', await ev("(()=>{const h=[...document.querySelectorAll('#fcR th')].map(t=>t.innerText).join('|');return /date/i.test(h)&&/Sched\\. start/.test(h)&&/Clock-in/.test(h)&&/Clock-out/.test(h)&&/Paid hours/.test(h)&&/\\$/.test(h)})()"), await ev("[...document.querySelectorAll('#fcR th')].map(t=>t.innerText).join(' | ')"));
+          await ev('App.back()');
+          const okBack = await until(inFocus(ins.id, 'store') + " && App.params.s===" + JSON.stringify(ep.s) + " && !App.params.g", 20000, 200);
+          check('Drill 4: Back from employee returns to the same finding + store', okBack, JSON.stringify(await ev('App.params')));
+          await ev("App.go('focus'," + JSON.stringify({ f: ins.id, s: ep.s, g: ep.g }) + ")"); await until(inFocus(ins.id, 'emp'), 20000, 200);
+          await ev("document.querySelector('#fcAll').click()");
+          check('Drill 3: "View all employee insights" opens the full employee page', await until("App.current==='employees' && App.params.g===" + JSON.stringify(ep.g) + " && document.querySelector('#edD tbody tr')", 20000), ep.g);
+        }
+      }
+      // Scenarios 5/6 — sidebar stays generic
+      await ev("document.querySelector('#nav button[data-view=stores]').click()"); await sleep(700);
+      check('Drill 5: sidebar Stores opens the generic all-stores overview', await ev("App.current==='stores' && !App.params.s && !App.params.f && document.querySelectorAll('#stT tbody tr').length > 5"), await ev("document.querySelector('#v-stores h2').innerText"));
+      await ev("document.querySelector('#nav button[data-view=employees]').click()"); await sleep(700);
+      check('Drill 6: sidebar Employees opens the generic all-employees overview', await ev("App.current==='employees' && !App.params.g && !App.params.f && !document.querySelector('#edD')"), await ev("document.querySelector('#v-employees h2').innerText"));
+    }
+
+    // ---- 4c. Findings filter chips (severity × evidence type) and keyword headlines ----
+    {
+      const FST = "(()=>{const ids=[...document.querySelectorAll('#fList .fcard')].map(c=>c.id.slice(3));const I=Object.fromEntries(App.result.insights.map(i=>[i.id,i]));const chip=(g,v)=>document.querySelector('.ffilters .chip[data-g='+g+'][data-v=\"'+v+'\"]');const pressed=(g)=>[...document.querySelectorAll('.ffilters .chip[data-g='+g+']')].filter(b=>b.getAttribute('aria-pressed')==='true').map(b=>b.dataset.v);return {ids, sev:ids.map(id=>I[id].severity), kind:ids.map(id=>I[id].kind), pSev:pressed('sev'), pKind:pressed('kind'), count:document.querySelector('#fCount').innerText, n:(g,v)=>0}})()";
+      const st = () => ev(FST);
+      const click = (g, v) => ev("document.querySelector('.ffilters .chip[data-g=" + g + "][data-v=\"" + v + "\"]').click()");
+      const chipN = (g) => ev("Object.fromEntries([...document.querySelectorAll('.ffilters .chip[data-g=" + g + "]')].map(b=>[b.dataset.v,+b.querySelector('.n').textContent]))");
+      await ev("App.go('findings')"); await sleep(500);
+      await ev("(()=>{const r=document.querySelector('#ffReset');if(!r.disabled)r.click()})()");
+      const all = await ev("App.result.insights.map(i=>({id:i.id,sev:i.severity,kind:i.kind,cat:i.category,cost:i.impact&&i.impact.cost,title:i.title}))");
+      const cnt = (f) => all.filter(f).length;
+      // 7 — counts come from the data
+      const sevN = await chipN('sev'), kindN = await chipN('kind');
+      check('Findings chips 7: counts are computed from the current findings', sevN.All === all.length && ['Critical', 'High', 'Medium', 'Low'].every((v) => sevN[v] === cnt((i) => i.sev === v)) && ['confirmed', 'estimate', 'risk', 'validate'].every((v) => kindN[v] === cnt((i) => i.kind === v)),
+        'Severity ' + JSON.stringify(sevN) + ' · Evidence ' + JSON.stringify(kindN));
+      check('Findings chips: two labelled groups, All active by default', await ev("[...document.querySelectorAll('.ffilters .fgl')].map(x=>x.innerText.toLowerCase()).join('|')==='severity|evidence type'") && (await st()).pSev.join() === 'All' && (await st()).pKind.join() === 'All', (await st()).count);
+      // 1 — Critical only
+      await click('sev', 'Critical'); let x = await st();
+      check('Findings chips 1: Critical shows only Critical findings', x.ids.length === cnt((i) => i.sev === 'Critical') && x.sev.every((v) => v === 'Critical') && x.count.includes('Showing ' + x.ids.length + ' of ' + all.length), x.count);
+      await shot('28-findings-critical');
+      // 2 — Critical + Estimate
+      await click('kind', 'estimate'); x = await st();
+      const ce = cnt((i) => i.sev === 'Critical' && i.kind === 'estimate');
+      const sevN2 = await chipN('sev');
+      check('Findings chips 2: Critical + Estimate combine (AND)', x.ids.length === ce && x.sev.every((v) => v === 'Critical') && x.kind.every((v) => v === 'estimate') && x.pSev.join() === 'Critical' && x.pKind.join() === 'estimate', x.count);
+      check('Findings chips 2: severity counts follow the active evidence type', ['Critical', 'High', 'Medium', 'Low'].every((v) => sevN2[v] === cnt((i) => i.sev === v && i.kind === 'estimate')) && sevN2.All === cnt((i) => i.kind === 'estimate'), JSON.stringify(sevN2));
+      await shot('29-findings-critical-estimate');
+      // 3 — clear Severity only
+      await click('sev', 'All'); x = await st();
+      check('Findings chips 3: Severity "All" keeps the Evidence type filter', x.pSev.join() === 'All' && x.pKind.join() === 'estimate' && x.ids.length === cnt((i) => i.kind === 'estimate') && x.kind.every((v) => v === 'estimate'), x.count);
+      // 4 — clear Evidence type only
+      await click('sev', 'High'); await click('kind', 'All'); x = await st();
+      check('Findings chips 4: Evidence type "All" keeps the Severity filter', x.pSev.join() === 'High' && x.pKind.join() === 'All' && x.ids.length === cnt((i) => i.sev === 'High') && x.sev.every((v) => v === 'High'), x.count);
+      // 5 — search with filters active
+      await click('kind', 'estimate');
+      await ev("(()=>{const q=document.querySelector('#fQ');q.value='employees';q.dispatchEvent(new Event('input'))})()"); x = await st();
+      const exp = await ev("App.result.insights.filter(i=>i.severity==='High'&&i.kind==='estimate'&&(i.title+' '+i.what+' '+i.where+' '+LCIViews.findingHeadline(i).kw).toLowerCase().includes('employees')).map(i=>i.id)");
+      check('Findings chips 5: search works together with severity and evidence type', x.ids.length > 0 && JSON.stringify(x.ids) === JSON.stringify(exp) && x.count.includes('Showing ' + exp.length), x.count + ' · ' + x.ids.join(','));
+      // Area together with the chips
+      const area = await ev("App.result.insights.find(i=>i.severity==='High'&&i.kind==='estimate').category");
+      await ev("(()=>{const q=document.querySelector('#fQ');q.value='';q.dispatchEvent(new Event('input'));const c=document.querySelector('#fCat');c.value=" + JSON.stringify(area) + ";c.dispatchEvent(new Event('change'))})()"); x = await st();
+      check('Findings chips: Area works together with the chips', x.ids.length === cnt((i) => i.sev === 'High' && i.kind === 'estimate' && i.cat === area) && x.pSev.join() === 'High' && x.pKind.join() === 'estimate', area + ' · ' + x.count);
+      // 10 — expansion and drill-down keep the filters
+      const fid2 = x.ids[0];
+      await ev("document.querySelector('#fd-" + fid2 + " .fhead').click()");
+      const opened = await until("document.querySelector('#fd-" + fid2 + " .fbody:not([hidden]) .drill table tbody tr')", 20000);
+      await ev("document.querySelector('#fd-" + fid2 + " .drill tbody tr').click()");
+      const inF = await until("App.current==='focus' && App.params.f===" + JSON.stringify(fid2) + " && document.querySelector('#v-focus h2')", 120000, 400);
+      await ev('App.back()'); await sleep(900); x = await st();
+      check('Findings chips 10: expanding and drilling still work, and Back keeps all finding filters', opened && inF && x.pSev.join() === 'High' && x.pKind.join() === 'estimate' && (await ev("document.querySelector('#fCat').value")) === area && (await ev("!!document.querySelector('#fd-" + fid2 + " .fbody:not([hidden])')")), fid2 + ' · ' + x.count);
+      // Reset
+      await ev("document.querySelector('#ffReset').click()"); x = await st();
+      check('Findings chips: Reset filters clears severity, evidence type, area and search', x.ids.length === all.length && x.pSev.join() === 'All' && x.pKind.join() === 'All' && (await ev("document.querySelector('#fCat').value==='All' && document.querySelector('#fQ').value===''")), x.count);
+      // 8 — keyword headlines
+      const hd = await ev("[...document.querySelectorAll('#fList .fcard')].map(c=>({id:c.id.slice(3),kw:(c.querySelector('.fkw')||{}).innerText||'',first:c.querySelector('.ft').children[1]&&c.querySelector('.ft').children[1].className,sent:c.querySelector('.fsent').innerText,money:[...c.querySelectorAll('.fsent b.hlv')].map(b=>b.innerText),fi:c.querySelector('.fi').childNodes[0]?c.querySelector('.fi').childNodes[0].textContent:''}))");
+      const generic = new Set(['FINDING', '']);
+      check('Findings headline 8: every headline starts with a highlighted problem keyword', hd.length === all.length && hd.every((h) => h.first === 'fkw' && !generic.has(h.kw.trim().toUpperCase()) && h.sent.length > 10) && new Set(hd.map((h) => h.kw)).size >= hd.length - 6,
+        hd.slice(0, 4).map((h) => h.kw + ' – ' + h.sent.slice(0, 40)).join(' | '));
+      // 9 — dollar values unchanged: every highlighted $ is in the engine's title; the card's $ is the engine's impact
+      const moneyK = await ev("App.result.insights.map(i=>i.impact&&FMT.ok(i.impact.cost)&&i.impact.cost?FMT.moneyK(i.impact.cost):null)");
+      const bad = hd.filter((h, k) => { const t = all.find((a) => a.id === h.id); const idx = all.indexOf(t); return !h.money.every((m) => t.title.includes(m)) || (moneyK[idx] && h.fi !== moneyK[idx]); });
+      check('Findings headline 9: $ values match the analysis (headline $ from the engine title; card $ = engine impact)', bad.length === 0, bad.length ? bad.map((b) => b.id).join(',') : hd.reduce((a, h) => a + h.money.length, 0) + ' highlighted $ values checked');
+      await shot('30-findings-headlines');
+    }
+
+    // ---- 4d. Two store drill-down modes: generic (sidebar) vs problem-specific (Explore) ----
+    {
+      const H2 = (v) => ev("(document.querySelector('#v-" + v + " h2')||{}).innerText||''");
+      const CR = (v) => ev("(document.querySelector('#v-" + v + " .crumb')||{}).innerText||''");
+      const ST = await ev("(App.result.stores.find(x=>x.name==='00221')||App.result.stores.slice().sort((a,b)=>b.grossAdd-a.grossAdd)[0]).s");
+      const row = await ev("App.result.stores.find(x=>x.s===" + JSON.stringify(ST) + ")");
+      const search = (host, q) => ev("(()=>{const i=document.querySelector('" + host + "').querySelector('input[type=search]');i.value=" + JSON.stringify(q) + ";i.dispatchEvent(new Event('input'))})()");
+      const clickFirst = (host) => ev("document.querySelector('" + host + " tbody tr').click()");
+      const fq = (q) => ev('App.query(' + JSON.stringify(Object.assign({ type: 'focus' }, q)) + ')');
+      // Scenario 1 — generic store from the sidebar
+      await ev("document.querySelector('#nav button[data-view=stores]').click()"); await sleep(600);
+      await search('#stT', row.name); await sleep(200); await clickFirst('#stT');
+      const g1 = await until("App.current==='stores' && App.params.s===" + JSON.stringify(ST) + " && document.querySelectorAll('#v-stores .kpis.k6 .kpi').length===6 && document.querySelector('#sdParts .brow') && document.querySelector('#sdRel tbody tr')", 30000, 300);
+      const parts = await ev("[...document.querySelectorAll('#sdParts .brow')].map(b=>b.querySelector('.bv').childNodes[0].textContent)");
+      const partSum = parts.reduce((t, x) => t + parseFloat(x.replace(/[^0-9.]/g, '')), 0);
+      check('Modes 1: sidebar Stores → store opens the complete Store Overview', g1 && /Store Overview/.test(await H2('stores')) && /Organization.*Stores.*Store/s.test(await CR('stores')), (await H2('stores')) + ' · ' + (await CR('stores')).replace(/\n/g, ' '));
+      check('Modes 1: store overview is dollar-first (labor $, Labor %, additional, avoidable, OT, top leakage) and covers every problem', g1 && (await ev("[...document.querySelectorAll('#v-stores .kpis.k6 .kpi .kv')].filter(x=>/\\$/.test(x.innerText)).length")) >= 4 && parts.length === 5 && (await ev("document.querySelectorAll('#sdRel tbody tr').length")) === 5,
+        (await ev("[...document.querySelectorAll('#v-stores .kpis.k6 .kpi')].map(k=>k.querySelector('.dl').innerText+': '+k.querySelector('.kv').innerText).join(' | ')")));
+      check('Modes 7: store cost categories are non-overlapping and add up to the additional labor cost', Math.abs(partSum - row.grossAdd) < 5 && parts.length === 5, parts.join(' + ') + ' ≈ $' + row.grossAdd.toFixed(0));
+      await shot('31-store-overview');
+      // Scenario 2 — Explore → Manual punches → store → employee
+      await ev("App.go('manual')"); await sleep(600);
+      await search('#mnS', row.name); await sleep(200); await clickFirst('#mnS');
+      const m1 = await until("App.current==='focus' && App.params.x==='manual' && App.params.s===" + JSON.stringify(ST) + " && document.querySelector('#fcE tbody tr')", 120000, 400);
+      const ms = m1 && await fq({ lens: 'manual', s: ST });
+      check('Modes 2: Explore → Manual punches → store shows Manual Punch Analysis only', m1 && /Manual Punch Analysis — Store/.test(await H2('focus')) && /Organization.*Explore.*Manual punches.*Store/s.test(await CR('focus')) && ms.records.every((r) => r.s === ST && /manual punch/.test(r.issue)),
+        (await H2('focus')) + ' · ' + (await CR('focus')).replace(/\n/g, ' '));
+      check('Modes 2: manual-punch facts (frequency, clock-in vs clock-out, late entry) and $ = store manual-punch cost', m1 && /Keyed in|audit log/.test(await ev("document.querySelector('#v-focus').innerText")) && Math.abs(ms.summary.cost - row.manExtraCost) < 1 && ms.extras && ms.extras.days === ms.recordsTotal,
+        ms ? '$' + ms.summary.cost.toFixed(2) + ' vs store row $' + row.manExtraCost.toFixed(2) + ' · in-only ' + ms.extras.inOnly + ', out-only ' + ms.extras.outOnly + ', both ' + ms.extras.both : '');
+      await shot('32-explore-manual-store');
+      const yS = await ev('window.scrollY');
+      await clickFirst('#fcE');
+      const m2 = await until("App.current==='focus' && App.params.x==='manual' && App.params.g && document.querySelector('#fcAll')", 60000, 300);
+      const mp = await ev('App.params'), me = m2 && await fq({ lens: 'manual', s: mp.s, g: mp.g });
+      check('Modes 2: employee level shows only that employee\'s manual punches (+ View all employee insights)', m2 && /Manual Punch Analysis — /.test(await H2('focus')) && me.records.length > 0 && me.records.every((r) => r.g === mp.g && r.s === mp.s) && (await ev("[...document.querySelectorAll('#fcR th')].some(t=>/Keyed in manually/.test(t.innerText))")),
+        (await H2('focus')) + ' · ' + (me ? me.records.length + ' records, $' + me.summary.cost.toFixed(2) : ''));
+      await shot('33-explore-manual-employee');
+      // Scenario 6 — Back keeps the context at every level
+      await ev('App.back()');
+      check('Modes 6: Back from employee returns to Manual punches · same store', await until("App.current==='focus' && App.params.x==='manual' && App.params.s===" + JSON.stringify(ST) + " && !App.params.g && document.querySelector('#fcE tbody tr')", 20000, 200));
+      await ev('App.back()'); await sleep(800);
+      check('Modes 6: Back again returns to the Manual punches page with its filters', (await ev("App.current")) === 'manual' && (await ev("document.querySelector('#mnS input[type=search]').value")) === '' && (await ev("App.filter.stores===null")), await ev("App.current"));
+      // Scenario 3 — Explore → Overtime → store
+      await ev("App.go('overtime')"); await sleep(600);
+      await search('#otS', row.name); await sleep(200); await clickFirst('#otS');
+      const o1 = await until("App.current==='focus' && App.params.x==='overtime' && App.params.s===" + JSON.stringify(ST) + " && document.querySelector('#fcR')", 60000, 300);
+      const os = o1 && await fq({ lens: 'ot', s: ST });
+      check('Modes 3: Explore → Overtime → store shows Overtime Analysis only; $ = recorded OT premium', o1 && /Overtime Analysis — Store/.test(await H2('focus')) && Math.abs(os.summary.cost - row.otPrem) < 1 && Math.abs(os.extras.premSched + os.extras.premDrift - os.summary.cost) < 1 && !/manual punch|meal/i.test(await ev("document.querySelector('#fcR').innerText")),
+        os ? (await H2('focus')) + ' · $' + os.summary.cost.toFixed(2) + ' = planned $' + os.extras.premSched.toFixed(2) + ' + past schedule $' + os.extras.premDrift.toFixed(2) : '');
+      await shot('34-explore-overtime-store');
+      // Scenario 4 — Explore → Schedule vs actual → store
+      await ev("App.go('adherence')"); await sleep(600);
+      await search('#adTbl', row.name); await sleep(200); await clickFirst('#adTbl');
+      const a1 = await until("App.current==='focus' && App.params.x==='adherence' && App.params.s===" + JSON.stringify(ST) + " && document.querySelector('#fcE tbody tr')", 60000, 300);
+      const as = a1 && await fq({ lens: 'overplan', s: ST });
+      check('Modes 4: Explore → Schedule vs actual → store shows schedule variance and its $ only', a1 && /Schedule vs Actual — Store/.test(await H2('focus')) && Math.abs(as.summary.cost - row.overPlanCost) < 1 && as.records.every((r) => /scheduled|schedule/.test(r.issue)) && /Scheduled .* paid/.test(await ev("document.querySelector('#v-focus').innerText")),
+        as ? (await H2('focus')) + ' · $' + as.summary.cost.toFixed(2) + ' vs store row $' + row.overPlanCost.toFixed(2) : '');
+      // From the store overview into one problem and back to it
+      await ev("App.go('stores',{s:" + JSON.stringify(ST) + "})"); await until("document.querySelector('#sdParts .brow')", 20000);
+      await ev("document.querySelector('#sdParts .brow').click()");
+      const sp = await until("App.current==='focus' && App.params.x==='stores' && document.querySelector('#v-focus h2')", 60000, 300);
+      check('Modes: a cost category on the store overview opens that problem for the store, under Stores in the breadcrumb', sp && /Organization.*Stores.*Store/s.test(await CR('focus')) && (await ev("document.querySelector('#nav button[data-view=stores]').getAttribute('aria-selected')")) === 'true', (await CR('focus')).replace(/\n/g, ' '));
+      // Sidebar resets the context
+      await ev("document.querySelector('#nav button[data-view=stores]').click()"); await sleep(700);
+      check('Modes: sidebar Stores after a problem drill-down opens the generic store list (no stale context)', await ev("App.current==='stores' && !App.params.s && !App.params.x && document.querySelectorAll('#stT tbody tr').length > 5"));
+      // Scenario 5 — generic employee
+      await ev("document.querySelector('#nav button[data-view=employees]').click()"); await sleep(600);
+      await clickFirst('#emT');
+      check('Modes 5: sidebar Employees → employee opens the complete Employee Profile', await until("App.current==='employees' && App.params.g && document.querySelector('#edD tbody tr')", 20000) && /Employee Profile/.test(await H2('employees')) && /Organization.*Employees/s.test(await CR('employees')) && (await ev("document.querySelectorAll('#v-employees .kpi').length")) >= 5,
+        (await H2('employees')) + ' · ' + (await CR('employees')).replace(/\n/g, ' '));
+      // Scenario 7 — reconciliation at organization level for the Explore lenses
+      for (const [lens, fig] of [['manual', 'App.result.financials.manual.extraCost'], ['ot', 'App.result.overtime.tot.prem'], ['overplan', 'App.result.financials.overPlan.cost']]) {
+        const o = await fq({ lens }); const want = await ev(fig);
+        check('Modes 7: ' + lens + ' — Σ stores = organization figure (no double counting across levels)', Math.abs(o.summary.cost - want) < 1 && Math.abs(o.stores.reduce((t, x) => t + x.cost, 0) - want) < 1, '$' + o.summary.cost.toFixed(2) + ' vs $' + want.toFixed(2));
+      }
+    }
+
     // ---- 4a. global filters (enhancement scenarios) ----
     const idle = `!!App.result && document.querySelector('#busy').hidden`;
     const pickPreset = async (k) => { await ev(`(()=>{const s=document.querySelector('#fPreset');s.value=${JSON.stringify(k)};s.dispatchEvent(new Event('change'))})()`); };
@@ -137,7 +352,7 @@ async function main() {
       check('Scenario 1: Labor % ranking view renders in descending order', firstRows.length === 3 && parseFloat(firstRows[0]) >= parseFloat(firstRows[1]) && parseFloat(firstRows[1]) >= parseFloat(firstRows[2]), firstRows.join(' ≥ '));
       await shot('60-laborrank-sep');
       await ev(`document.querySelector('#lrT tbody tr').click()`);
-      check('Scenario 1: clicking a ranked store opens its detail', await until(`document.querySelector('#v-stores .crumb') && document.querySelectorAll('#v-stores canvas').length >= 2`, 20000));
+      check('Scenario 1: clicking a ranked store opens its Labor % analysis (problem context)', await until(`App.current==='focus' && App.params.x==='laborrank' && App.params.lens==='labor' && /Sales & Labor Analysis/.test(document.querySelector('#v-focus h2') ? document.querySelector('#v-focus h2').innerText : '')`, 120000, 400), await ev(`document.querySelector('#v-focus h2') && document.querySelector('#v-focus h2').innerText`));
     }
     // Scenario 2 — single store via the picker
     await ev(`App.go('overview')`);
@@ -165,6 +380,21 @@ async function main() {
       await ev(`App.go('manual')`); await sleep(500);
       check('Scenario 3: manual punch view shows the store\'s manual punches', (await ev(`document.querySelector('#v-manual .kpi .kx').innerText.replace(/,/g,'')`)).startsWith(String(r2.man) + ' manual punches'), `${r2.man} manual punches`);
       await shot('62-store-manual');
+      await ev("App.go('findings')"); await sleep(500);
+      const fc6 = await ev("(()=>{const n=Object.fromEntries([...document.querySelectorAll('.ffilters .chip[data-g=sev]')].map(b=>[b.dataset.v,+b.querySelector('.n').textContent]));const R=App.result.insights;return {n, ok:n.All===R.length&&['Critical','High','Medium','Low'].every(v=>n[v]===R.filter(i=>i.severity===v).length), total:R.length, base:App.base.result.insights.length, txt:document.querySelector('#fCount').innerText}})()");
+      check('Findings chips 6: counts refresh for the selected store and period', fc6.ok && fc6.txt.includes('of ' + fc6.total + ' findings'), fc6.txt + ' (organization, full period: ' + fc6.base + ') · ' + JSON.stringify(fc6.n));
+      // Drill 4 under filters — drill-down respects the store scope and Back keeps the filter
+      const fIns = await ev("(()=>{const i=App.result.insights.find(x=>x.lens);return i&&i.id})()");
+      const scopeBefore = await ev("document.querySelector('#fActive').innerText");
+      if (fIns) {
+        await ev("App.go('findings',{open:" + JSON.stringify(fIns) + "})"); await sleep(500);
+        await ev("App.drill(App.result.insights.find(x=>x.id===" + JSON.stringify(fIns) + "),{})");
+        const okF = await until("App.current==='focus' && document.querySelector('#fcS tbody tr')", 60000, 300);
+        const fo = okF && await ev("App.query({type:'focus',finding:" + JSON.stringify(fIns) + "})");
+        check('Drill 4 (filtered): drill-down covers only the filtered store', okF && fo.stores.every((x) => x.s === pickStore), fo ? fo.stores.map((x) => x.s).join(',') : 'did not load');
+        await ev('App.back()'); await sleep(700);
+        check('Drill 4 (filtered): Back returns to the finding with the same filters', await ev("App.current==='findings' && App.result.meta.scope.kind==='store' && !!document.querySelector('#fd-" + fIns + " .fbody:not([hidden])')") && (await ev("document.querySelector('#fActive').innerText")) === scopeBefore, scopeBefore.replace(/\n/g, ' '));
+      }
     }
     // Scenario 4/5 — custom partial-month range: Labor % withheld, no proration
     await ev(`App.applyFilter({stores:null, from:null, to:null})`); await until(idle, 10000);
@@ -196,6 +426,8 @@ async function main() {
     check('Behaviour view switches category (recurring manual punches)', await ev(`[...document.querySelectorAll('#bhT tbody tr')].slice(0,5).every(tr=>/manual/i.test(tr.children[2].innerText))`));
     await shot('65-behavior-manual');
     await ev(`document.querySelector('#bhT tbody tr').click()`);
+    check('Behaviour pattern row opens that pattern for the employee (problem context)', await until(`App.current==='focus' && App.params.x==='behavior' && document.querySelector('#fcAll') && document.querySelector('.fc-pat')`, 60000, 300), await ev(`document.querySelector('#v-focus h2') && document.querySelector('#v-focus h2').innerText`));
+    await ev(`document.querySelector('#fcAll').click()`);
     check('Employee page shows recurring behaviour patterns', await until(`document.querySelector('#edP tbody tr')`, 20000), await ev(`document.querySelector('#v-employees h2') && document.querySelector('#v-employees h2').innerText`));
     await shot('66-employee-patterns');
 
@@ -270,6 +502,8 @@ async function main() {
       await ev(`App.go('employees', {g:${JSON.stringify(g2)}})`);
       check('Opened from disk: employee day-by-day drill-down works', await until(`document.querySelector('#edD tbody tr') && !document.querySelector('#v-employees .msg.err')`, 15000), g2);
       await shot('50-file-mode-employee');
+      await ev(`App.go('findings'); App.drill(App.result.insights.find(x=>x.lens==='late'),{})`);
+      check('Opened from disk: finding drill-down (Finding → stores) works', await until(`App.current==='focus' && document.querySelector('#fcS tbody tr')`, 240000, 500), await ev(`document.querySelector('#v-focus h2') && document.querySelector('#v-focus h2').innerText`));
       const sF = await ev(`App.base.result.stores[3].s`);
       await ev(`App.applyFilter({stores:[${JSON.stringify(sF)}], from:null, to:null})`);
       check('Opened from disk: store filter works (engine runs from the bundle)', await until(`App.result && App.result.meta.scope.kind==='store' && document.querySelector('#busy').hidden`, 180000, 500), await ev(`App.result && App.result.meta.scope.storeLabel`));

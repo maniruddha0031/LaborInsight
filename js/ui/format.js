@@ -4,7 +4,41 @@
   const nf0 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
   const nf1 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
 
-  F.esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // Also drops U+2063 (list-item marker from the engine) so text displays normally outside the finding bullets.
+  F.esc = (s) => String(s == null ? '' : s).replace(/⁣/g, '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  /** Escape, then emphasise money, percentages, hours, multipliers and large counts. */
+  F.hl = (s) => F.esc(s).replace(/(−?\$[0-9][0-9,]*(?:\.[0-9]+)?[KM]?|[0-9][0-9,]*(?:\.[0-9]+)?\s?(?:%|pts\b|h\b|×)|\b[0-9]{1,3}(?:,[0-9]{3})+\b)/g, '<b class="hlv">$1</b>');
+
+  /**
+   * Turn a finding paragraph into short bullet points: one per sentence, and one per item where the
+   * sentence is a list ("Highest: A, B and C" → lead-in + one bullet per store).
+   */
+  F.bullets = (text) => {
+    const out = [];
+    const src = String(text || '').trim();
+    if (!src) return out;
+    const sentences = src.split(/(?<=[.!?])\s+(?=[A-Z0-9$(“"−])/);
+    for (let s of sentences) {
+      s = s.trim().replace(/\.$/, '');
+      if (!s) continue;
+      if (s.includes('⁣')) {
+        const parts = s.split(/⁣(?:, | and )/);
+        let lead = '', first = parts[0];
+        const c = first.lastIndexOf(': ');
+        if (c > 0) { lead = first.slice(0, c); first = first.slice(c + 2); }
+        out.push({ lead, items: [first].concat(parts.slice(1)).map((x) => x.trim()) });
+      } else out.push({ lead: s, items: null });
+    }
+    return out;
+  };
+  F.bulletsHtml = (text, cls) => {
+    const b = F.bullets(text);
+    if (!b.length) return '';
+    return `<ul class="${cls || 'fx-pts'}">` + b.map((x) => x.items
+      ? (x.lead ? `<li>${F.hl(x.lead)}:<ul>${x.items.map((i) => `<li>${F.hl(i)}</li>`).join('')}</ul></li>` : x.items.map((i) => `<li>${F.hl(i)}</li>`).join(''))
+      : `<li>${F.hl(x.lead)}</li>`).join('') + '</ul>';
+  };
   F.ok = (v) => v != null && isFinite(v);
   F.n = (v) => (F.ok(v) ? nf0.format(v) : '—');
   F.n1 = (v) => (F.ok(v) ? nf1.format(v) : '—');

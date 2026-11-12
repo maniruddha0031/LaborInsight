@@ -23,8 +23,8 @@ window.LCI_MANIFEST = {
         "dir": "cmg-mar-oct-2026.snapshot",
         "empShards": 64,
         "modelParts": 4,
-        "generatedAt": "2026-11-04T17:22:46.179Z",
-        "engine": "fa605b1039af"
+        "generatedAt": "2026-11-11T16:56:20.911Z",
+        "engine": "d941fbfd02af"
       }
     }
   ]

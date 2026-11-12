@@ -324,3 +324,65 @@ main.recalc section.view:not(#v-dataset) { opacity: .45; pointer-events: none; t
 .rankst.uh { background: var(--crit); color: #fff; } .rankst.hi { background: var(--highbg); color: var(--high); } .rankst.av { background: var(--lowbg); color: var(--muted); } .rankst.lo { background: var(--okbg); color: var(--ok); }
 .scopebanner { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; margin: -4px 0 14px; font-size: 13.5px; color: var(--muted); }
 .scopebanner b { color: var(--ink); }
+
+/* ---- Finding card: structured summary ---- */
+.fx { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 320px); gap: 16px 28px; margin-top: 14px; }
+.fx-main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 28px; align-content: start; }
+.fx-wide { grid-column: 1 / -1; }
+.fx-sec h5, .fx-side h5 { font: 600 11.5px var(--cond); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 4px; }
+.fx-pts { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.45; }
+.fx-pts li { margin: 2px 0; }
+.fx-pts.fx-small { font-size: 13px; color: var(--muted); }
+.fx-pts.fx-small b.hlv { color: var(--ink); }
+b.hlv { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.fx-side { display: flex; flex-direction: column; gap: 12px; }
+.fx-money { background: var(--ice); border-radius: 6px; padding: 10px 14px; }
+.fx-big { font: 700 26px var(--cond); color: var(--crit); line-height: 1.15; margin-bottom: 4px; }
+.fx-do { border-left: 3px solid var(--steel); padding: 2px 0 2px 12px; }
+.fx-ev { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.fx-ev summary { cursor: pointer; font: 600 12px var(--cond); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.fx-ev summary .note { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.fx-ev[open] summary { margin-bottom: 6px; }
+.fx-drillhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 16px 0 8px; }
+.fx-drillhead h4 { margin: 0; }
+.fx-drillhead .btn { margin-left: auto; }
+@media (max-width: 1000px) { .fx { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) { .fx-main { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- Contextual drill-down (finding → store → employee) ---- */
+.backbar { flex-wrap: wrap; padding-right: 110px; }
+.backbar .crumb { margin: 0; }
+.crumb .cur { color: var(--ink); font-weight: 600; padding: 2px 4px; }
+.fc-ctx { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -6px 0 14px; font-size: 14px; color: var(--muted); }
+.fc-ctx b { color: var(--ink); }
+.fc-pat { border-left: 4px solid var(--high); }
+@media (max-width: 760px) { .backbar { padding-right: 0; } }
+
+/* ---- Findings: grouped filter chips and keyword headlines ---- */
+.ffilters { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; margin-bottom: 10px; }
+.fgrp { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.fgrp + .fgrp { padding-left: 22px; border-left: 1px solid var(--line); }
+.fgl { font: 600 11.5px var(--cond); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.chip:hover { border-color: var(--steel); }
+.chip[aria-pressed="true"] { background: var(--steel); border-color: var(--steel); color: #fff; box-shadow: none; }
+.chip[aria-pressed="true"] .n { opacity: .9; }
+.chip.zero { opacity: .5; }
+.fcount b { color: var(--ink); }
+.fhead .ft { font-weight: 400; }
+.fhead .fno { color: var(--muted); font-weight: 600; }
+.fhead .fkw { font: 700 13px var(--cond); text-transform: uppercase; letter-spacing: .05em; color: var(--ink); background: var(--ice); border-radius: 3px; padding: 1px 6px; white-space: nowrap; }
+.fcard.sev-Critical .fkw { box-shadow: inset 3px 0 0 var(--crit); padding-left: 8px; }
+.fcard.sev-High .fkw { box-shadow: inset 3px 0 0 var(--high); padding-left: 8px; }
+.fcard.sev-Medium .fkw { box-shadow: inset 3px 0 0 var(--med); padding-left: 8px; }
+.fhead .fdash { color: var(--muted); }
+.fhead .fsent { color: var(--ink); }
+@media (max-width: 760px) { .fgrp + .fgrp { padding-left: 0; border-left: 0; } }
+
+/* ---- Store overview: six-figure financial summary ---- */
+.kpis.k6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 1400px) { .kpis.k6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .kpis.k6 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 460px) { .kpis.k6 { grid-template-columns: minmax(0, 1fr); } }
+.kpi .tag { margin-right: 2px; }
+.crumb .crx { color: var(--muted); padding: 2px 4px; }
+.kpi.txt .kv { font-size: 21px; line-height: 1.2; white-space: normal; }

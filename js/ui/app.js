@@ -102,6 +102,9 @@
       $('#progBar').style.width = '100%';
       $('#progMsg').textContent = `Pre-computed on ${G.FMT.date(String(ds.snapshot.generatedAt).slice(0, 10))} from ${ds.files.join(', ')}. Analyze re-runs it from the ZIP.`;
       onResult(snap.result, ds.label || ds.id);
+      App._baseBuilt = false;
+      const run = App.runId;
+      setTimeout(() => { if (run === App.runId && App.snap) ensureDrillCtx(true).catch(() => {}); }, 4000);
     } catch (e) {
       $('#progress').hidden = true;
       msg(esc(e.message) + (FILE_MODE ? ' ' + SERVE_HINT : ' Click Analyze to process the ZIP instead.'), 'warn');
@@ -249,7 +252,26 @@
     return null;
   }
 
+  App._baseWait = new Map();
+  App._focusCache = new WeakMap();
+  /** In snapshot mode, make the worker answer drill-downs from the full-scope analysis context. */
+  async function ensureDrillCtx(quiet) {
+    await ensureFilterEngine(true);
+    if (!App.snap) return; // a filtered or ZIP-analysed result: the worker already holds its context
+    const rid = ++App.qid;
+    if (!quiet && !App._baseBuilt) busy('Preparing drill-down data (first time only, about 15–30 s)…');
+    try { await new Promise((res, rej) => { App._baseWait.set(rid, { resolve: res, reject: rej }); App.worker.postMessage({ cmd: 'prepareBase', select: true, rid }); }); App._baseBuilt = true; }
+    finally { if (!quiet) busy(null); }
+  }
   App.query = (q) => new Promise((resolve, reject) => {
+    if (q.type === 'focus') {
+      // cache per result (each filter run produces a new result object)
+      const cache = App._focusCache.get(App.result) || new Map(); App._focusCache.set(App.result, cache);
+      const key = JSON.stringify(q);
+      if (cache.has(key)) return resolve(cache.get(key));
+      const res0 = resolve; resolve = (v) => { cache.set(key, v); res0(v); };
+      return ensureDrillCtx(false).then(() => new Promise((res, rej) => { const qid = ++App.qid; App.pending.set(qid, { resolve: res, reject: rej }); App.worker.postMessage({ cmd: 'query', qid, q }); })).then(resolve, reject);
+    }
     if (App.snap && App.result) return snapQuery(q).then(resolve, reject);
     if (!App.worker || !App.result) return reject(new Error('No dataset loaded'));
     const qid = ++App.qid;
@@ -401,14 +423,14 @@
   }
 
   /** Start (once) the engine that re-runs the analysis for a scope. */
-  function ensureFilterEngine() {
+  function ensureFilterEngine(quiet) {
     if (App.engineReady) return App.engineReady;
     App.engineReady = new Promise(async (resolve, reject) => {
       try {
         if (App.worker && !App.base.snap) { resolve(); return; } // ZIP analysed in this worker: base model is already there
         const ds = App.base.snap.ds;
         if (!ds.snapshot.modelParts) throw new Error('This pre-computed dataset has no data model for filtering. Re-run tools/build-snapshot.js ' + ds.id + ', or use Re-analyze from ZIP.');
-        busy('Preparing filters — loading the data model (first time only)…');
+        if (!quiet) busy('Preparing filters — loading the data model (first time only)…');
         let worker;
         if (FILE_MODE) {
           // Opened from disk: start the worker from the engine bundle (a Blob URL works on file://).
@@ -434,6 +456,8 @@
   /** Worker messages that belong to filtering. Returns true when handled. */
   function filterMessage(m) {
     if (m.type === 'modelReady') { if (App._modelReady) App._modelReady(); return true; }
+    if (m.type === 'baseReady') { const w = App._baseWait.get(m.rid); if (w) { App._baseWait.delete(m.rid); w.resolve(); } return true; }
+    if (m.type === 'error' && m.rid != null) { const w = App._baseWait.get(m.rid); if (w) { App._baseWait.delete(m.rid); w.reject(new Error(m.message)); } return true; }
     if (m.type === 'filtered') {
       if (m.fid !== App.fid) return true;
       App.snap = null;
@@ -493,34 +517,59 @@
     const R = App.result;
     let view = App.current === 'dataset' ? 'overview' : App.current, params = App.params || {};
     // Keep a store drill-down only if that store is still in scope; employee drill-downs re-query in scope.
-    if (params.s && !R.stores.some((x) => x.s === params.s)) params = {};
-    if (params.g && !R.employees.some((x) => x.g === params.g)) params = {};
+    const keepF = view === 'focus' ? (params.f ? { f: params.f } : { x: params.x, lens: params.lens }) : {};
+    if (params.s && !R.stores.some((x) => x.s === params.s)) params = keepF;
+    if (params.g && !R.employees.some((x) => x.g === params.g)) params = keepF;
     if (params.open) params = {};
-    show(view, params, true);
+    show(view, params, true, { replace: true });
   }
 
   // ---------- navigation ----------
-  function show(view, params, force) {
+  App.hist = [];
+  function show(view, params, force, opts) {
+    opts = opts || {};
     if (view !== 'dataset' && !App.result) view = 'dataset';
+    // Remember where we were (view, its parameters and scroll position) so Back can return to it.
+    if (!opts.back && !opts.replace && App.result && App.current && (App.current !== view || JSON.stringify(App.params || {}) !== JSON.stringify(params || {}))) {
+      App.hist.push({ view: App.current, params: App.params || {}, y: window.scrollY });
+      if (App.hist.length > 50) App.hist.shift();
+    }
     App.current = view;
     App.params = params || {};
     $('#fbar').hidden = view === 'dataset' || !App.base;
-    for (const b of $$('#nav button')) b.setAttribute('aria-selected', String(b.dataset.view === view));
+    // a finding drill-down belongs to Findings in the sidebar
+    for (const b of $$('#nav button')) b.setAttribute('aria-selected', String(b.dataset.view === (view === 'focus' ? (params && params.x) || 'findings' : view)));
     for (const s of $$('section.view')) s.hidden = s.id !== 'v-' + view;
     const el = $('#v-' + view);
     if (view !== 'dataset') {
       const key = view + JSON.stringify(App.params);
-      if (force || !App.rendered.has(key) || Object.keys(App.params).length) {
+      if (force || !App.rendered.has(key) || el.dataset.rkey !== key || Object.keys(App.params).length) {
         G.UI.destroyCharts(el);
         el.innerHTML = '';
         try { VIEWS[view](el, App.result, App.params); } catch (e) { console.error(e); el.innerHTML = `<div class="msg err">This view could not be rendered: ${esc(e.message)}</div>`; }
         App.rendered.add(key);
+        el.dataset.rkey = key;
       }
     }
-    window.scrollTo({ top: 0 });
+    App._restoreY = opts.y != null ? opts.y : null;
+    if (opts.y != null) { const y = opts.y; setTimeout(() => window.scrollTo({ top: y }), 80); setTimeout(() => window.scrollTo({ top: y }), 400); } else window.scrollTo({ top: 0 });
   }
-  App.go = show;
-  $('#nav').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && !b.disabled) show(b.dataset.view); });
+  App.go = (view, params) => show(view, params);
+  /** Views that render asynchronously call this once their content is in place, so Back lands on the same spot. */
+  App.restoreScroll = () => { if (App._restoreY != null) { window.scrollTo({ top: App._restoreY }); App._restoreY = null; } };
+  App.back = () => {
+    const prev = App.hist.pop();
+    if (!prev) return show('findings');
+    show(prev.view, prev.params, true, { back: true, y: prev.y });
+  };
+  /** Open a finding's contextual drill-down; keeps the finding expanded in history so Back returns to it. */
+  /** Open a problem-specific drill-down from an Explore page (or from a store overview: x = 'stores'). */
+  App.explore = (x, lens, p) => show('focus', Object.assign({ x, lens }, p || {}));
+  App.drill = (ins, p) => {
+    if (App.current === 'findings') App.params = Object.assign({}, App.params, { open: ins.id });
+    show('focus', { f: ins.id, s: p.s || null, g: p.g || null });
+  };
+  $('#nav').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && !b.disabled) show(b.dataset.view, {}); });
 
   loadManifest();
   refreshSelection();

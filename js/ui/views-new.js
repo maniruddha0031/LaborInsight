@@ -7,18 +7,18 @@
   const pts = (v) => (F.ok(v) ? (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v * 100).toFixed(1) + ' pts' : '—');
 
   /** Ranking table (also used as the drill-down of the Labor % finding). */
-  function laborTable(host, R, pageSize) {
+  function laborTable(host, R, pageSize, onRow) {
     const LR = R.sales.laborRank;
     const rows = LR.rows.map((r) => Object.assign({ name: sn(R, r.s) }, r));
     UI.table(host, {
-      rows, sortKey: 'rank', desc: false, pageSize: pageSize || 50, placeholder: 'Search stores', onRow: (r) => G.App.go('stores', { s: r.s }),
+      rows, sortKey: 'rank', desc: false, pageSize: pageSize || 50, placeholder: 'Search stores', onRow: onRow || ((r) => G.App.explore('laborrank', 'labor', { s: r.s })),
       cols: [
         { key: 'rank', label: 'Rank', num: true, fmt: F.n },
         { key: 'name', label: 'Store' },
         { key: 'laborPct', label: 'Labor %', num: true, fmt: (v) => F.pct(v), bar: '--c-late', title: 'Punch pay ÷ actual sales, complete months only' },
         { key: 'diff', label: 'vs average', num: true, fmt: (v) => `<span style="color:${v > 0.02 ? 'var(--crit)' : v < -0.02 ? 'var(--ok)' : 'inherit'}">${pts(v)}</span>`, title: `Difference from the average of ${F.pct(LR.orgPct)} (total pay ÷ total sales of ranked stores)` },
         { key: 'status', label: 'Status', fmt: (v) => `<span class="rankst ${ST[v] || 'av'}">${esc(v)}</span>` },
-        { key: 'pay', label: 'Labor $', num: true, fmt: F.moneyK },
+        { key: 'pay', label: 'Labor $', num: true, fmt: F.money },
         { key: 'sales', label: 'Sales', num: true, fmt: F.moneyK },
         { key: 'prev', label: 'Previous period', num: true, fmt: (v) => (v == null ? '—' : F.pct(v)), title: LR.prevMonths.length ? 'Same number of complete months immediately before: ' + LR.prevMonths.join(', ') : 'No previous comparable period in the data' },
         { key: 'change', label: 'Change', num: true, fmt: (v) => (v == null ? '—' : `<span style="color:${v > 0.005 ? 'var(--crit)' : v < -0.005 ? 'var(--ok)' : 'inherit'}">${pts(v)}</span>`) },
@@ -88,12 +88,12 @@
           ${I.hasAudit && I.manual.withLag ? `<dt>Entered more than ${R.rules.retroLag.value} min late</dt><dd>${F.pct(I.manual.retro / I.manual.withLag, 0)} of manual entries (median ${F.n1(I.manual.medianLag / 60)} h)</dd>` : ''}
         </dl><p class="note">These figures are a view of the early, late and unscheduled time already counted elsewhere — they are never added to them.</p></div>
       </div>
-      ${R.stores.length > 1 ? '<div class="panel"><h3>Stores with the most manual punches</h3><div id="mnS"></div></div>' : ''}
+      ${R.stores.length > 1 ? '<div class="panel"><h3>Stores by manual-punch cost</h3><p class="note" style="margin-top:-4px">Click a store for its manual punch analysis only.</p><div id="mnS"></div></div>' : ''}
       <div class="panel"><h3>Employees with manual punches</h3><div id="mnE"></div></div>
     </div>`;
     UI.chart(UI.$('#mnM', el), { type: 'line', labels: ms.map((m) => F.monthShort(m.key)), series: [{ label: 'Manual share', type: 'line', color: '--c-unsch', data: ms.map((m) => { const a = R.adherence.byMonth[m.key]; return a && a.act ? (a.manMin / a.act) * 100 : null; }) }], fmtY: (v) => F.n1(v) + '%', beginAtZero: true });
-    if (R.stores.length > 1) UI.table(UI.$('#mnS', el), { rows: R.stores.filter((s) => s.manN > 0), sortKey: 'manMin', pageSize: 20, placeholder: 'Search stores', onRow: (r) => G.App.go('stores', { s: r.s }), cols: G.LCIViews.storeCols('manual') });
-    UI.table(UI.$('#mnE', el), { rows: R.employees.filter((e) => e.manN > 0), sortKey: 'manMin', pageSize: 20, placeholder: 'Search name or GEID', onRow: (r) => G.App.go('employees', { g: r.g }),
+    if (R.stores.length > 1) UI.table(UI.$('#mnS', el), { rows: R.stores.filter((s) => s.manN > 0), sortKey: 'manExtraCost', pageSize: 20, placeholder: 'Search stores', onRow: (r) => G.App.explore('manual', 'manual', { s: r.s }), cols: G.LCIViews.storeCols('manual') });
+    UI.table(UI.$('#mnE', el), { rows: R.employees.filter((e) => e.manN > 0), sortKey: 'manExtraCost', pageSize: 20, placeholder: 'Search name or GEID', onRow: (r) => G.App.explore('manual', 'manual', { g: r.g, s: r.store }),
       cols: G.LCIViews.empCols('manual').concat([{ key: 'recurringManual', label: 'Recurring', val: (r) => (r.recurringManual ? 1 : 0), fmt: (v) => (v ? '<span class="tag vld">recurring</span>' : '') }]) });
   };
 

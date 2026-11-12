@@ -67,6 +67,51 @@ The active scope is always shown under the bar: store(s), number of stores and e
 - an employee's typical pay rate is taken over that store's punches only
 - weekly overtime is attributed to the store worked most that week
 
+### Findings and contextual drill-downs
+
+An expanded finding is a short structured summary: **What happened**, **Where**, **Why it matters**, **Financial impact** (the $ figure first) and **What to do** (with owner and horizon). Amounts, percentages and counts are highlighted. **Evidence & method** is collapsed underneath.
+
+Rows in a finding's supporting table, and **Explore … by store →**, open a drill-down that stays inside that finding:
+
+- **Finding → stores:** the finding's $ by store. The stores add up to the finding total.
+- **Store:** only this finding for that store. Shows its $, hours, % over schedule (paid above schedule), affected employees, dates, the contributing employees and the supporting schedule and punch records.
+- **Employee:** only this employee's records for this finding at this store. Shows GEID, store, hours, $, affected shifts or days, first and last occurrence and any recurring pattern. The records list business date, scheduled start and end, clock-in and clock-out, scheduled and paid hours, the hours behind the finding, $ and the exception. **View all employee insights →** opens the full employee page.
+
+Breadcrumbs (Organization / Findings / finding / Store / Employee) and **‹ Back** keep the dataset, filters, finding, store and scroll position. The sidebar **Stores** and **Employees** pages stay generic overviews of everything in scope.
+
+**Findings page filters.** Two chip groups, **Severity** and **Evidence type**, each with one active choice (All by default). They combine with each other, with **Area** and with **Search**. Each group's counts reflect the other active filters. **Reset filters** clears all four. The choices are kept when you go into a drill-down and come back. Each headline starts with a highlighted problem keyword (for example MANUAL PUNCHES), followed by the finding's own generated sentence, with the $ amounts in bold.
+
+### Two ways into a store
+
+- **Generic: sidebar Stores → store → Store Overview.** This is the complete picture for the store:
+  - recorded labor cost, wage-based Labor % (complete months only), estimated additional labor cost, estimated avoidable cost, recorded OT premium and the top cost leakage
+  - the five non-overlapping cost categories, which add up to the additional cost
+  - the related problems that overlap those categories: paid above schedule, manual punches and edits (shown with their $ but not added), plus minors and missing meals (not costed)
+  - additional $ by month and weekday, and employees by additional cost
+
+  Clicking a category opens that problem for the store. The sidebar Employees page likewise opens the complete Employee Profile.
+- **Problem-specific: an Explore page → store → employee.** Store and employee rows on these pages open a drill-down for that page's problem only:
+
+  | Explore page | Problem shown |
+  |---|---|
+  | Manual punches | manual punches |
+  | Schedule vs actual | paid above schedule |
+  | Overtime (now with a stores table) | overtime |
+  | Punch integrity | punch edits |
+  | Breaks & compliance | meals |
+  | Sales & labor, Labor % ranking | labor cost and Labor % |
+  | Employee behavior | the pattern's problem |
+  | Monthly trends (persistent stores) | paid above schedule |
+
+  - The title names the problem (for example "Manual Punch Analysis — Store 00221"). The breadcrumb reads Organization / Explore / Manual punches / Store / Employee.
+  - A key-facts panel shows only that problem's figures. For manual punches: frequency, clock-in vs clock-out keyed in, and late entries. For overtime: planned vs from-working-past-schedule premium.
+  - Recommended actions come from the matching findings.
+  - **View all employee insights →** and the "store overview" link lead to the generic pages.
+
+The sidebar always opens the generic pages with no leftover context. Back returns through each level with the dataset and filters unchanged.
+
+In a pre-computed snapshot, the first drill-down builds the full analysis context in the background (about 15–30 s, once; it usually starts a few seconds after the page opens). After filters are applied, drill-downs answer from the filtered analysis.
+
 Choosing or uploading another dataset starts a fresh Web Worker and clears every previous result, chart and view, so datasets never mix.
 
 Use a 64-bit desktop browser (Chrome, Edge or Firefox). The CMG dataset needs roughly 2–3 GB of free memory while it is processed.
@@ -198,6 +243,9 @@ node tools/test-behavior.js datasets/cmg-mar-oct-2026.zip
 
 # store / date filter scenarios (scope isolation, partial months, manual punches, Labor % ranking)
 node tools/test-filters.js datasets/cmg-mar-oct-2026.zip
+
+# finding drill-downs: every finding has a drill-down, Σ stores = finding, Σ employees = store, records stay in context
+node tools/test-focus.js datasets/cmg-mar-oct-2026.zip
 
 # independent cross-check of the engine against the raw CSVs (no engine code used)
 node tools/validate-calculations.js "<folder with raw CSVs>" result.json

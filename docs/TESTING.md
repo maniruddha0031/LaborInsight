@@ -181,6 +181,48 @@ CMG data:
 - Overtime pattern dates started on the Monday before the selected period. They are now clipped.
 - Two UI-test selectors broke because of the new dollar-first layout. They were fixed.
 
+## 4c. Finding presentation and contextual drill-downs — `tools/test-focus.js` and `tools/ui-test.js`
+
+**Engine (`test-focus.js`):** every finding has a lens; Σ stores = the finding total for each lens; Σ employees = the store figure; an employee's drill-down holds only that employee's records for the finding and store; spot checks for late, manual, edits and meals.
+
+**Browser (`ui-test.js`, "Drill" checks):**
+1. An expanded finding shows What happened / Where / Why it matters / Financial impact / What to do as bullets, with a $ headline, highlighted figures and Evidence & method collapsed.
+2. A finding row opens the contextual drill-down, with breadcrumbs. Findings stays selected in the sidebar.
+3. Employee records show date, schedule, clock-in and clock-out, hours and $. **View all employee insights** opens the full employee page.
+4. Back returns to the finding expanded at the same scroll position. Back from an employee returns to the same finding and store. Under a store filter, the drill-down covers only that store and Back keeps the filter.
+5. and 6. Sidebar Stores and Employees open the generic overviews.
+7. and 8. For paid above schedule, manual punches, overtime, early, late, edits and meals: org → store → employee, Σ stores = finding total, Σ employees = store, records stay in context.
+9. Opened from disk (file://), a finding drill-down works through the bundled engine.
+
+**Results (CMG Mar–Oct 2026):** `test-focus.js` 45/45, `test-behavior.js` 15/15, `test-filters.js` 24/24, `validate-calculations.js` 23/23, `ui-test.js` 101/101.
+
+**Defects found and fixed in this round:**
+- The paid-above-schedule drill-down headline added up unnetted employee-days ($3.51 M) instead of the netted store figures ($1.49 M, as on the finding). The headline is now Σ stores, and a check was added.
+- Sidebar Stores and Employees could still show the last store or employee detail. The sidebar now always opens the generic overview.
+- An early version rounded each record to cents, which drifted the organization total by $3–$100. Records now keep full precision.
+
+## 4d. Findings filters, keyword headlines, and the two store modes — `tools/ui-test.js`
+
+**Findings chips:**
+1. Critical only.
+2. Critical + Estimate combine, and severity counts follow the evidence filter.
+3. and 4. Each group's "All" keeps the other group.
+5. Search with chips. Area with chips.
+6. Counts refresh under a store and month filter.
+7. Counts come from the data.
+8. Every headline starts with a keyword.
+9. Headline $ comes from the engine title, and the card $ is the engine impact.
+10. Expansion and drill-down work, and Back keeps all chip, area and search choices.
+
+**Store modes** (store 00221):
+1. Sidebar Stores → Store Overview: 6 financial KPIs, 5 categories adding up to the additional cost, related problems.
+2. Explore → Manual punches → store: manual only. $ = the store's manual-punch cost. Clock-in / clock-out facts. Employee: only their manual records.
+3. Explore → Overtime → store: $ = recorded OT premium = planned + past-schedule.
+4. Explore → Schedule vs actual → store: $ = the store's cost above schedule.
+5. Sidebar Employees → Employee Profile.
+6. Back from employee → same store and problem → the Explore page, with filters unchanged. The sidebar resets the context.
+7. Σ stores = organization figure for manual, overtime and above-schedule. `test-focus.js` adds: Explore entry = finding entry, OT planned + past-schedule = OT premium, and manual in/out days ≤ manual days ≤ working days.
+
 ## 5. Original resources unchanged
 
 | Resource | Method | Result |

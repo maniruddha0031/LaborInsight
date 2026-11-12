@@ -130,7 +130,7 @@
       nonFlex: [{ key: 'nonFlex', label: 'Months sales ↓ hours ↑', num: true, fmt: F.n }, { key: 'splh', label: 'SPLH', num: true, fmt: F.n1 }, { key: 'laborPct', label: 'Labor %', num: true, fmt: (v) => F.pct(v) }, { key: 'sales', label: 'Sales', num: true, fmt: F.moneyK }],
       peerGapHrs: [{ key: 'splh', label: 'SPLH', num: true, fmt: F.n1 }, { key: 'peerGapHrs', label: 'Hours vs peer median', num: true, fmt: F.hrs, bar: '--c-neutral' }, { key: 'laborPct', label: 'Labor %', num: true, fmt: (v) => F.pct(v) }],
       minorLate: [{ key: 'minorPunches', label: 'Minor punches', num: true, fmt: F.n }, { key: 'minorLate', label: 'Ending after limit', num: true, fmt: F.n, bar: '--c-late' }],
-      manual: [{ key: 'manN', label: 'Manual punches', num: true, fmt: F.n }, { key: 'manMin', label: 'Manual hours', num: true, fmt: F.hrsFromMin, bar: '--c-unsch' }, { key: 'manShare', label: '% of paid hours', num: true, fmt: (v) => F.pct(v) }, { key: 'manPay', label: 'Pay on manual time', num: true, fmt: F.money }, { key: 'manAvoid', label: 'Avoidable (review)', num: true, fmt: F.money }, { key: 'retro', label: 'Entered late', num: true, fmt: F.n }],
+      manual: [{ key: 'manExtraCost', label: 'Additional pay via manual punches', num: true, fmt: F.money, bar: '--c-late', title: 'Early, late and unscheduled time recorded through manual punches, at the employee rate (estimate; overlaps those categories)' }, { key: 'manN', label: 'Manual punches', num: true, fmt: F.n }, { key: 'manMin', label: 'Manual hours', num: true, fmt: F.hrsFromMin }, { key: 'manShare', label: '% of paid hours', num: true, fmt: (v) => F.pct(v) }, { key: 'manPay', label: 'Pay on manual time', num: true, fmt: F.money }, { key: 'manAvoid', label: 'Avoidable (review)', num: true, fmt: F.money }, { key: 'retro', label: 'Entered late', num: true, fmt: F.n }],
       avoid: [{ key: 'avoid', label: 'Avoidable $', num: true, fmt: F.money, bar: '--c-late' }, { key: 'avoidPerHr', label: '$ per paid hour', num: true, fmt: dollars }, { key: 'overPlanPct', label: '% above plan', num: true, fmt: (v) => F.pct(v) }, { key: 'otPrem', label: 'OT premium', num: true, fmt: F.money }, { key: 'manShare', label: 'Manual hours %', num: true, fmt: (v) => F.pct(v) }],
     };
     return base.concat(m[key] || m.overPlanCost);
@@ -148,7 +148,7 @@
       paidHrs: [{ key: 'paidHrs', label: 'Paid hours', num: true, fmt: F.hrs }, { key: 'days', label: 'Days', num: true, fmt: F.n }],
       cost: [{ key: 'grossAdd', label: 'Additional cost', num: true, fmt: F.money, bar: '--c-late', title: 'Non-overlapping: early + late + unscheduled + skipped meals + OT premium' }, { key: 'avoid', label: 'Avoidable', num: true, fmt: F.money }, { key: 'mainIssue', label: 'Main cost driver' },
         { key: 'patternCount', label: 'Recurring patterns', num: true, fmt: (v, r) => (v ? `${F.n(v)}<span class="sub">${esc((r.patternCats || []).join(', '))}</span>` : '—') }, { key: 'paidHrs', label: 'Paid hours', num: true, fmt: F.hrs }, { key: 'lastDeviation', label: 'Last deviation', fmt: (v) => (v ? F.date(v) : '—') }],
-      manual: [{ key: 'manN', label: 'Manual punches', num: true, fmt: F.n, bar: '--c-unsch' }, { key: 'manMin', label: 'Manual hours', num: true, fmt: F.hrsFromMin }, { key: 'manWeeks', label: 'Weeks', num: true, fmt: F.n }, { key: 'manPay', label: 'Pay on manual time', num: true, fmt: F.money }, { key: 'manAvoid', label: 'Avoidable (review)', num: true, fmt: F.money }],
+      manual: [{ key: 'manExtraCost', label: 'Additional pay via manual punches', num: true, fmt: F.money, bar: '--c-late', title: 'Early, late and unscheduled time recorded through manual punches, at the employee rate (estimate; overlaps those categories)' }, { key: 'manN', label: 'Manual punches', num: true, fmt: F.n }, { key: 'manMin', label: 'Manual hours', num: true, fmt: F.hrsFromMin }, { key: 'manWeeks', label: 'Weeks', num: true, fmt: F.n }, { key: 'manPay', label: 'Pay on manual time', num: true, fmt: F.money }, { key: 'manAvoid', label: 'Avoidable (review)', num: true, fmt: F.money }],
       devTypes: [{ key: 'devTypes', label: 'Recurring patterns', num: true, fmt: F.n, bar: '--c-late' }, { key: 'pat', label: 'Which', val: (r) => patterns(r).join(' '), fmt: (v, r) => patterns(r).map((x) => `<span class="tag">${esc(x)}</span>`).join(' ') }, { key: 'avoid', label: 'Avoidable $', num: true, fmt: F.money }],
     };
     return base.concat(m[key] || m.avoid);
@@ -159,43 +159,45 @@
       { key: 'manualCreate', label: 'Punches keyed in', num: true, fmt: F.n }, { key: 'addMin', label: 'Time added', num: true, fmt: F.hrsFromMin }, { key: 'remMin', label: 'Time removed', num: true, fmt: F.hrsFromMin }];
   }
 
-  async function renderDrill(host, R, d) {
+  async function renderDrill(host, R, d, ins) {
     if (!d) { host.innerHTML = ''; return; }
+    // Rows open this finding's contextual drill-down (not the generic store / employee pages).
+    const toStore = (st) => G.App.drill(ins, { s: st }), toEmp = (g, st) => G.App.drill(ins, { g, s: st || null });
     if (d.type === 'patterns') {
-      if (R.behavior) G.LCIViews.patternTable(host, R, R.behavior.patterns.filter((p) => p.cat === d.cat), { pageSize: 15 });
+      if (R.behavior) G.LCIViews.patternTable(host, R, R.behavior.patterns.filter((p) => p.cat === d.cat), { pageSize: 15, onRow: (r) => toEmp(r.g) });
     } else if (d.type === 'storeConc') {
-      UI.table(host, { rows: (R.behavior || {}).storeConc || [], sortKey: 'cost', pageSize: 15, onRow: (r) => G.App.go('stores', { s: r.store }), cols: [{ key: 'storeName', label: 'Store' }, { key: 'label', label: 'Pattern' }, { key: 'emps', label: 'Employees', num: true, fmt: (v, r) => `${F.n(v)} of ${F.n(r.active)}` }, { key: 'share', label: 'Share of staff', num: true, fmt: (v) => F.pct(v, 0) }, { key: 'cost', label: '$ impact', num: true, fmt: F.money, bar: '--c-late' }] });
+      UI.table(host, { rows: (R.behavior || {}).storeConc || [], sortKey: 'cost', pageSize: 15, onRow: (r) => toStore(r.store), cols: [{ key: 'storeName', label: 'Store' }, { key: 'label', label: 'Pattern' }, { key: 'emps', label: 'Employees', num: true, fmt: (v, r) => `${F.n(v)} of ${F.n(r.active)}` }, { key: 'share', label: 'Share of staff', num: true, fmt: (v) => F.pct(v, 0) }, { key: 'cost', label: '$ impact', num: true, fmt: F.money, bar: '--c-late' }] });
     } else if (d.type === 'laborRank') {
-      if (R.sales.available && R.sales.laborRank) G.LCIViews.laborTable(host, R, 15); else host.innerHTML = '<div class="note">No Labor % ranking for this selection.</div>';
+      if (R.sales.available && R.sales.laborRank) G.LCIViews.laborTable(host, R, 15, (r) => toStore(r.s)); else host.innerHTML = '<div class="note">No Labor % ranking for this selection.</div>';
     } else if (d.type === 'stores' && d.key === 'trend') {
       const ex = d.extra || {};
       const delta = (v) => (F.ok(v) ? `<span class="tag ${v > 0 ? 'risk' : 'good'}">${v > 0 ? '+' : '−'}${dollars(Math.abs(v))}</span>` : '—');
-      UI.table(host, { rows: drillStores(R, d.rows), pageSize: 15, placeholder: 'Search stores', onRow: (r) => G.App.go('stores', { s: r.s }), cols: [{ key: 'name', label: 'Store' },
+      UI.table(host, { rows: drillStores(R, d.rows), pageSize: 15, placeholder: 'Search stores', onRow: (r) => toStore(r.s), cols: [{ key: 'name', label: 'Store' },
         { key: 'a', label: 'First half $/paid h', num: true, val: (r) => (ex[r.s] || {}).a, fmt: dollars }, { key: 'b', label: 'Second half $/paid h', num: true, val: (r) => (ex[r.s] || {}).b, fmt: dollars },
         { key: 'd', label: 'Change', num: true, val: (r) => (ex[r.s] || {}).d, fmt: delta }, { key: 'overPlanPct', label: '% above plan', num: true, fmt: (v) => F.pct(v) }] });
     } else if (d.type === 'stores') {
-      UI.table(host, { rows: drillStores(R, d.rows), cols: storeCols(d.key), pageSize: 15, placeholder: 'Search stores', onRow: (r) => G.App.go('stores', { s: r.s }) });
+      UI.table(host, { rows: drillStores(R, d.rows), cols: storeCols(d.key), pageSize: 15, placeholder: 'Search stores', onRow: (r) => toStore(r.s) });
     } else if (d.type === 'employees') {
       const set = new Set(d.rows);
       const rows = R.employees.filter((e) => set.has(e.g)).sort((a, b) => d.rows.indexOf(a.g) - d.rows.indexOf(b.g));
-      UI.table(host, { rows, cols: empCols(d.key), pageSize: 15, placeholder: 'Search name or GEID', onRow: (r) => G.App.go('employees', { g: r.g }) });
+      UI.table(host, { rows, cols: empCols(d.key), pageSize: 15, placeholder: 'Search name or GEID', onRow: (r) => toEmp(r.g) });
     } else if (d.type === 'editors') {
       const set = new Set(d.rows);
       UI.table(host, { rows: R.integrity.editors.filter((e) => set.has(e.key)), cols: editorCols(), sortKey: d.key, pageSize: 15, placeholder: 'Search editors' });
     } else if (d.type === 'storeMonths') {
       host.innerHTML = '<div class="note">Loading…</div>';
       const rows = await G.App.query({ type: 'storeMonths', rows: d.rows });
-      UI.table(host, { search: false, rows, cols: [{ key: 'name', label: 'Store' }, { key: 'month', label: 'Month', fmt: (v) => F.monthLabel(v) }, { key: 'fs', label: 'Forecast sales', num: true, fmt: F.money },
+      UI.table(host, { search: false, rows, onRow: (r) => toStore(r.s), cols: [{ key: 'name', label: 'Store' }, { key: 'month', label: 'Month', fmt: (v) => F.monthLabel(v) }, { key: 'fs', label: 'Forecast sales', num: true, fmt: F.money },
         { key: 'as', label: 'Actual sales', num: true, fmt: F.money }, { key: 'ach', label: 'Achievement', num: true, fmt: (v) => F.pct(v) }, { key: 'hrs', label: 'Paid hours', num: true, fmt: F.hrs }] });
     } else if (d.type === 'records' && d.key === 'longPunches') {
       host.innerHTML = '<div class="note">Loading…</div>';
       const rows = await G.App.query({ type: 'records', key: 'longPunches' });
       UI.table(host, { rows, pageSize: 15, placeholder: 'Search', cols: [{ key: 'name', label: 'Employee', fmt: (v, r) => `${esc(v)}<span class="sub">GEID ${esc(r.g)}</span>` }, { key: 'store', label: 'Store' }, { key: 'date', label: 'Date' },
-        { key: 'in', label: 'Clock in' }, { key: 'out', label: 'Clock out' }, { key: 'hours', label: 'Paid hours', num: true, fmt: F.n1 }, { key: 'pay', label: 'Pay', num: true, fmt: F.money }, { key: 'src', label: 'Source' }], onRow: (r) => G.App.go('employees', { g: r.g }) });
+        { key: 'in', label: 'Clock in' }, { key: 'out', label: 'Clock out' }, { key: 'hours', label: 'Paid hours', num: true, fmt: F.n1 }, { key: 'pay', label: 'Pay', num: true, fmt: F.money }, { key: 'src', label: 'Source' }], onRow: (r) => toEmp(r.g) });
     } else if (d.type === 'records' && d.key === 'rateOutliers') {
       host.innerHTML = '<div class="note">Loading…</div>';
       const rows = await G.App.query({ type: 'records', key: 'rateOutliers' });
-      UI.table(host, { rows, pageSize: 15, placeholder: 'Search', onRow: (r) => G.App.go('employees', { g: r.g }), cols: [{ key: 'name', label: 'Employee', fmt: (v, r) => `${esc(v)}<span class="sub">GEID ${esc(r.g)} · ${esc(r.job)}</span>` },
+      UI.table(host, { rows, pageSize: 15, placeholder: 'Search', onRow: (r) => toEmp(r.g), cols: [{ key: 'name', label: 'Employee', fmt: (v, r) => `${esc(v)}<span class="sub">GEID ${esc(r.g)} · ${esc(r.job)}</span>` },
         { key: 'store', label: 'Store' }, { key: 'date', label: 'Date' }, { key: 'rate', label: 'Rate on punch', num: true, fmt: dollars }, { key: 'normal', label: 'Usual rate', num: true, fmt: dollars },
         { key: 'hours', label: 'Hours', num: true, fmt: F.n1 }, { key: 'pay', label: 'Pay', num: true, fmt: F.money, bar: '--c-late' }, { key: 'src', label: 'Source' }] });
     } else if (d.type === 'records' && d.key === 'spikes') {
@@ -205,63 +207,139 @@
     }
   }
 
+  /** Impact label without repeating the headline amount. */
+  function impactRest(imp, head) {
+    const lbl = String(imp.label || '').replace(/\u2063/g, '');
+    return lbl.startsWith(head) ? lbl.slice(head.length).replace(/^[\s·—-]+/, '') : lbl;
+  }
+
+  /**
+   * Problem keyword for each finding, and the lead-in words of its generated title that the keyword
+   * makes redundant. Titles are built by insights.js from the data; if a lead-in no longer matches,
+   * the full title is shown unchanged after the keyword.
+   */
+  const KEYWORDS = {
+    'over-plan': ['Schedule overrun'], unscheduled: ['Unscheduled shifts', /^Unscheduled shifts:\s*/i],
+    'manual-time': ['Manual punches', /^Manual punches:\s*/i], 'late-out': ['Late clock-outs', /^Late clock-outs cost\s+/i],
+    'early-in': ['Early clock-ins', /^Early clock-ins cost\s+/i], overtime: ['Overtime premium', /^Overtime premium cost\s+/i],
+    'edits-add': ['Punch edits', /^Punch edits\s+/i], minors: ['Minor compliance'], 'meal-skip': ['Skipped meal breaks', /^Skipped planned meals cost\s+/i],
+    'beh-combined': ['Recurring employee patterns'], 'beh-late': ['Recurring late clock-outs'], 'beh-early': ['Recurring early clock-ins'],
+    'beh-manual': ['Recurring manual punches'], 'beh-overtime': ['Recurring overtime'], 'beh-edits': ['Recurring punch edits'], 'beh-earlyLate': ['Recurring early & late punches'],
+    'beh-store': ['Store-wide patterns'], 'labor-rank': ['High labor %'], persistent: ['Persistent overrun'], concentration: ['Cost concentration'],
+    'sales-flex': ['Labor not flexed to sales'], 'self-edits': ['Self-edited punches'], 'shared-accounts': ['Shared logins'],
+    biometric: ['Biometric not used'], 'store-trend': ['Store trends'], 'payroll-id': ['Missing payroll ID'],
+    'leak-stores': ['High-leak stores'], 'pay-anomaly': ['Pay rate anomaly'], 'forgotten-out': ['Forgotten clock-outs'],
+    'forecast-anomaly': ['Forecast anomaly'], 'edit-spike': ['Edit spike'], 'peer-splh': ['Low SPLH vs peers'],
+  };
+  /** Bold only the dollar amounts in a sentence (the keyword carries the emphasis; figures stay readable). */
+  const hlMoney = (t) => esc(t).replace(/(≈?−?\$[0-9][0-9,]*(?:\.[0-9]+)?[KM]?)/g, '<b class="hlv">$1</b>');
+  function kwHeadline(i) {
+    const k = KEYWORDS[i.id] || (String(i.id).startsWith('beh-') ? ['Recurring employee pattern'] : [i.category || 'Finding']);
+    let rest = String(i.title || '');
+    if (k[1] && k[1].test(rest)) rest = rest.replace(k[1], '');
+    rest = rest.charAt(0).toUpperCase() + rest.slice(1);
+    return { kw: k[0], rest };
+  }
+
   function findingCard(i, n) {
+    const hd = kwHeadline(i);
     const imp = i.impact || {};
+    const hasCost = F.ok(imp.cost) && imp.cost;
+    const headline = hasCost ? F.money(imp.cost) : F.ok(imp.hours) && imp.hours ? F.hrs(imp.hours) : '—';
+    const rest = impactRest(imp, hasCost ? F.money(imp.cost) : '');
+    const ev = i.evidence || [];
+    const lensName = i.lens && G.LCIViews.lensLabel ? G.LCIViews.lensLabel(i.lens) : '';
     return `<article class="fcard sev-${i.severity}" id="fd-${esc(i.id)}">
       <button class="fhead" aria-expanded="false">
-        <div><div class="ft">${n}. ${esc(i.title)}</div>
+        <div><div class="ft" title="${esc(i.title)}"><span class="fno">${n}.</span> <span class="fkw">${esc(hd.kw)}</span><span class="fdash"> – </span><span class="fsent">${hlMoney(hd.rest)}</span></div>
           <div class="fm"><span class="sev s-${i.severity}">${i.severity}</span>${F.kindTag(i.kind)}<span class="tag">Confidence: ${esc(i.confidence)}</span><span class="tag">${esc(i.category)}</span>${i.recurrence ? `<span class="tag">${esc(i.recurrence)}</span>` : ''}</div></div>
-        <div class="fi">${F.ok(imp.cost) && imp.cost ? F.moneyK(imp.cost) : F.ok(imp.hours) && imp.hours ? F.hrsK(imp.hours) : ''}<small>${esc(imp.label || '')}</small></div>
+        <div class="fi">${hasCost ? F.moneyK(imp.cost) : F.ok(imp.hours) && imp.hours ? F.hrsK(imp.hours) : ''}<small>${esc(imp.label || '')}</small></div>
       </button>
       <div class="fbody" hidden>
-        <div class="fgrid">
-          <div><div class="q">What happened</div><p>${esc(i.what)}</p></div>
-          <div><div class="q">Where</div><p>${esc(i.where)}</p></div>
-          <div><div class="q">Why it matters</div><p>${esc(i.why)}</p></div>
-          <div><div class="q">Evidence</div><ul>${(i.evidence || []).map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>
-          <div class="fact"><div class="q">What to do</div><p>${esc(i.action)}</p><div class="fbasis">Owner: ${esc(i.plan.owner)} · ${esc(i.plan.horizon)}</div></div>
-          <div><div class="q">Potential impact</div><p>${esc(imp.label || '—')}</p><div class="fbasis">Basis: ${esc(imp.basis || '—')}</div></div>
+        <div class="fx">
+          <div class="fx-main">
+            <section class="fx-sec"><h5>What happened</h5>${F.bulletsHtml(i.what)}</section>
+            <section class="fx-sec"><h5>Where</h5>${F.bulletsHtml(i.where)}</section>
+            <section class="fx-sec fx-wide"><h5>Why it matters</h5>${F.bulletsHtml(i.why)}</section>
+          </div>
+          <aside class="fx-side">
+            <section class="fx-money"><h5>Financial impact</h5><div class="fx-big">${esc(headline)}</div>${rest ? F.bulletsHtml(rest, 'fx-pts fx-small') : ''}</section>
+            <section class="fx-do"><h5>What to do</h5>${F.bulletsHtml(i.action)}<div class="fbasis">Owner: ${esc(i.plan.owner)} · ${esc(i.plan.horizon)}</div></section>
+          </aside>
         </div>
-        <h4 style="margin-top:16px">Supporting records</h4>
+        ${ev.length || imp.basis ? `<details class="fx-ev"><summary>Evidence &amp; method <span class="note">(${ev.length} point${ev.length === 1 ? '' : 's'})</span></summary>
+          <ul class="fx-pts fx-small">${ev.map((e) => `<li>${F.hl(e)}</li>`).join('')}</ul>${imp.basis ? `<div class="fbasis">Calculation: ${esc(imp.basis)}</div>` : ''}</details>` : ''}
+        <div class="fx-drillhead"><h4>Supporting records</h4><span class="note">Click a row to see only this finding for that ${i.drill && (i.drill.type === 'employees' || i.drill.type === 'patterns' || i.drill.type === 'records') ? 'employee' : 'store'}.</span>${lensName ? `<button class="btn" data-explore="${esc(i.id)}">Explore ${esc(lensName.toLowerCase())} by store →</button>` : ''}</div>
         <div class="drill"></div>
       </div>
     </article>`;
   }
 
+  // Finding-page filters survive navigation (Back from a drill-down) and global filter changes.
+  const FF = { sev: 'All', kind: 'All', cat: 'All', q: '' };
+
   VIEWS.findings = function (el, R, params) {
     const cats = [...new Set(R.insights.map((i) => i.category))];
-    const st = { sev: new Set(SEV), kind: new Set(Object.keys(KIND)), cat: 'All', q: '' };
+    const st = FF;
+    if (st.cat !== 'All' && !cats.includes(st.cat)) st.cat = 'All';
+    // Opening a specific finding (from the overview, the action plan or Back) must show it.
+    const want = params && params.open ? R.insights.find((i) => i.id === params.open) : null;
+    const textOf = (i) => (i.title + ' ' + i.what + ' ' + i.where + ' ' + kwHeadline(i).kw).toLowerCase();
+    const match = (i, skip) => (skip === 'sev' || st.sev === 'All' || i.severity === st.sev) && (skip === 'kind' || st.kind === 'All' || i.kind === st.kind) &&
+      (st.cat === 'All' || i.category === st.cat) && (!st.q || textOf(i).includes(st.q));
+    if (want && !match(want)) { st.sev = 'All'; st.kind = 'All'; st.cat = 'All'; st.q = ''; }
+    const chip = (grp, v, label) => `<button type="button" class="chip" data-g="${grp}" data-v="${esc(v)}" aria-pressed="false">${esc(label)}<span class="n"></span></button>`;
     el.innerHTML = `<h2>${esc(G.LCIViews.scopeTitle(R, 'Labor cost findings'))}</h2>
       <p class="lead">Each finding is computed only from the selected stores and dates, and states what happened, where, why it matters, the evidence, the action and the impact. <b>Confirmed</b> = direct record counts; <b>Estimate</b> = $ derived with the stated basis; <b>Risk</b> = control or compliance exposure without a $ claim; <b>Needs validation</b> = a pattern to review before acting.</p>
-      <div class="controls"><div class="chips" id="fSev">${SEV.map((s) => `<button class="chip" aria-pressed="true" data-v="${s}">${s}<span class="n">${R.insights.filter((i) => i.severity === s).length}</span></button>`).join('')}</div>
-        <div class="chips" id="fKind">${Object.entries(KIND).map(([k, v]) => `<button class="chip" aria-pressed="true" data-v="${k}">${v}<span class="n">${R.insights.filter((i) => i.kind === k).length}</span></button>`).join('')}</div></div>
-      <div class="controls"><label>Area <select id="fCat"><option>All</option>${cats.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label><input type="search" id="fQ" placeholder="Search findings" aria-label="Search findings"></div>
+      <div class="ffilters">
+        <div class="fgrp"><span class="fgl" id="fSevL">Severity</span><div class="chips" id="fSev" role="group" aria-labelledby="fSevL">${chip('sev', 'All', 'All')}${SEV.map((v) => chip('sev', v, v)).join('')}</div></div>
+        <div class="fgrp"><span class="fgl" id="fKindL">Evidence type</span><div class="chips" id="fKind" role="group" aria-labelledby="fKindL">${chip('kind', 'All', 'All')}${Object.entries(KIND).map(([k, v]) => chip('kind', k, v)).join('')}</div></div>
+      </div>
+      <div class="controls"><label>Area <select id="fCat"><option>All</option>${cats.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label><input type="search" id="fQ" placeholder="Search findings" aria-label="Search findings">
+        <button type="button" class="btn" id="ffReset">Reset filters</button><span class="note fcount" id="fCount" aria-live="polite"></span></div>
       <div class="flist" id="fList"></div>`;
     const list = UI.$('#fList', el);
+    UI.$('#fCat', el).value = st.cat;
+    UI.$('#fQ', el).value = st.q;
+    function chips() {
+      // Each group's counts reflect every other active filter (the other group, area, search).
+      for (const [grp, key] of [['sev', 'severity'], ['kind', 'kind']]) {
+        const base = R.insights.filter((i) => match(i, grp));
+        UI.$$(`.chip[data-g="${grp}"]`, el).forEach((b) => {
+          const v = b.dataset.v, n = v === 'All' ? base.length : base.filter((i) => i[key] === v).length;
+          b.querySelector('.n').textContent = n;
+          b.setAttribute('aria-pressed', String(st[grp] === v));
+          b.classList.toggle('zero', n === 0 && st[grp] !== v);
+        });
+      }
+    }
     function draw() {
-      const rows = R.insights.filter((i) => st.sev.has(i.severity) && st.kind.has(i.kind) && (st.cat === 'All' || i.category === st.cat) &&
-        (!st.q || (i.title + ' ' + i.what + ' ' + i.where).toLowerCase().includes(st.q)));
-      list.innerHTML = rows.length ? rows.map((i) => findingCard(i, R.insights.indexOf(i) + 1)).join('') : '<div class="empty panel">No findings match these filters.</div>';
+      const rows = R.insights.filter((i) => match(i));
+      chips();
+      const active = st.sev !== 'All' || st.kind !== 'All' || st.cat !== 'All' || st.q;
+      UI.$('#fCount', el).innerHTML = `Showing <b>${F.n(rows.length)}</b> of ${F.n(R.insights.length)} findings`;
+      UI.$('#ffReset', el).disabled = !active;
+      list.innerHTML = rows.length ? rows.map((i) => findingCard(i, R.insights.indexOf(i) + 1)).join('') : (R.insights.length ? '<div class="empty panel">No findings match these filters. <button type="button" class="ilink" id="ffReset2">Reset filters</button></div>' : '<div class="empty panel">No findings for this selection — there may be too little data in the chosen stores and dates.</div>');
+      const r2 = UI.$('#ffReset2', list); if (r2) r2.addEventListener('click', reset);
       UI.$$('.fcard', list).forEach((card) => {
         const id = card.id.slice(3), ins = R.insights.find((x) => x.id === id);
         const head = card.querySelector('.fhead'), body = card.querySelector('.fbody');
         let loaded = false;
+        const ex = card.querySelector('[data-explore]');
+        if (ex) ex.addEventListener('click', (e) => { e.stopPropagation(); G.App.drill(ins, {}); });
         head.addEventListener('click', () => {
           const open = body.hidden;
           body.hidden = !open; head.setAttribute('aria-expanded', String(open));
-          if (open && !loaded) { loaded = true; renderDrill(card.querySelector('.drill'), R, ins.drill).catch((e) => { card.querySelector('.drill').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }); }
+          if (open && !loaded) { loaded = true; renderDrill(card.querySelector('.drill'), R, ins.drill, ins).catch((e) => { card.querySelector('.drill').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }); }
         });
       });
     }
-    const chipSet = (host, set) => UI.$$('.chip', host).forEach((b) => b.addEventListener('click', () => {
-      const v = b.dataset.v; if (set.has(v)) set.delete(v); else set.add(v);
-      b.setAttribute('aria-pressed', String(set.has(v))); draw();
-    }));
-    chipSet(UI.$('#fSev', el), st.sev); chipSet(UI.$('#fKind', el), st.kind);
+    function reset() { st.sev = 'All'; st.kind = 'All'; st.cat = 'All'; st.q = ''; UI.$('#fCat', el).value = 'All'; UI.$('#fQ', el).value = ''; draw(); }
+    UI.$$('.ffilters .chip', el).forEach((b) => b.addEventListener('click', () => { st[b.dataset.g] = b.dataset.v; draw(); }));
     UI.$('#fCat', el).addEventListener('change', (e) => { st.cat = e.target.value; draw(); });
     UI.$('#fQ', el).addEventListener('input', (e) => { st.q = e.target.value.trim().toLowerCase(); draw(); });
+    UI.$('#ffReset', el).addEventListener('click', reset);
     draw();
-    if (!R.insights.length) list.innerHTML = '<div class="empty panel">No findings for this selection — there may be too little data in the chosen stores and dates.</div>';
     if (params && params.open) {
       const card = UI.$('#fd-' + CSS.escape(params.open), el);
       if (card) { card.querySelector('.fhead').click(); setTimeout(() => card.scrollIntoView({ block: 'start' }), 30); }
@@ -286,5 +364,5 @@
   };
 
   const scopeTitle = (R, base) => { const sc = R.meta.scope; return sc && sc.kind !== 'org' ? `${base} — ${sc.storeLabel}` : base; };
-  G.LCIViews = Object.assign(G.LCIViews || {}, { storeCols, empCols, editorCols, storeName, scopeTitle, patterns });
+  G.LCIViews = Object.assign(G.LCIViews || {}, { storeCols, empCols, editorCols, storeName, scopeTitle, patterns, findingHeadline: kwHeadline, findingFilters: FF });
 })(window);

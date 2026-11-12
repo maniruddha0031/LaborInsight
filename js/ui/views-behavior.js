@@ -8,6 +8,7 @@
     { k: 'patterns', label: 'Most recurring patterns' }, { k: 'recent', label: 'Most recent occurrence' },
   ];
   const sevRank = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+  const CAT_LENS = { manual: 'manual', late: 'late', early: 'early', earlyLate: 'avoid', overtime: 'ot', edits: 'edits', combined: 'avoid' };
   const shortD = (iso) => (iso ? new Date(iso + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '');
 
   /** Pattern table (used by this view, finding drill-downs and the employee page). */
@@ -27,7 +28,7 @@
       { key: 'severity', label: 'Severity', val: (r) => sevRank[r.severity], fmt: (v, r) => `<span class="sev s-${r.severity}">${r.severity}</span>` },
     ];
     if (!opts.compact) cols.push({ key: 'description', label: 'What the pattern is', fmt: (v) => `<span class="note">${esc(v)}</span>` });
-    UI.table(host, { rows, cols, sortKey: opts.sortKey || 'cost', desc: opts.desc !== false, pageSize: opts.pageSize || 25, placeholder: 'Search name, GEID or store', onRow: opts.noClick ? null : (r) => G.App.go('employees', { g: r.g }) });
+    UI.table(host, { rows, cols, sortKey: opts.sortKey || 'cost', desc: opts.desc !== false, pageSize: opts.pageSize || 25, placeholder: 'Search name, GEID or store', onRow: opts.noClick ? null : opts.onRow || ((r) => G.App.explore('behavior', CAT_LENS[r.cat] || 'avoid', { s: r.store || null, g: r.g })) });
     return emp;
   }
 
@@ -76,7 +77,7 @@
     UI.$$('#bhCats .chip', el).forEach((b) => b.addEventListener('click', () => { st.cat = b.dataset.k; draw(); }));
     UI.$('#bhSort', el).addEventListener('change', (e) => { st.sort = e.target.value; draw(); });
     draw();
-    if (UI.$('#bhS', el)) UI.table(UI.$('#bhS', el), { rows: B.storeConc, sortKey: 'cost', pageSize: 15, placeholder: 'Search stores', onRow: (r) => G.App.go('stores', { s: r.store }), cols: [
+    if (UI.$('#bhS', el)) UI.table(UI.$('#bhS', el), { rows: B.storeConc, sortKey: 'cost', pageSize: 15, placeholder: 'Search stores', onRow: (r) => G.App.explore('behavior', CAT_LENS[r.cat] || 'avoid', { s: r.store }), cols: [
       { key: 'storeName', label: 'Store' }, { key: 'label', label: 'Pattern' }, { key: 'emps', label: 'Employees', num: true, fmt: (v, r) => `${F.n(v)} of ${F.n(r.active)}` },
       { key: 'share', label: 'Share of staff', num: true, fmt: (v) => F.pct(v, 0), bar: '--c-unsch' }, { key: 'cost', label: '$ impact', num: true, fmt: F.money }] });
   };
